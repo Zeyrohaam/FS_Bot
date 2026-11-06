@@ -1,0 +1,1353 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <title>Freaking Stars Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?62"></script>
+  <link rel="stylesheet" href="/webapp/assets/app.css?v=24" />
+</head>
+<body>
+  <div class="space-backdrop" aria-hidden="true">
+    <div class="space-glow glow-1"></div>
+    <div class="space-glow glow-2"></div>
+    <div class="space-glow glow-3"></div>
+    <div id="spaceField" class="space-field"></div>
+  </div>
+
+  <div class="app-shell">
+    <header class="hero cardish">
+      <div>
+        <div class="eyebrow">Freaking Stars • Mini App</div>
+        <h1>Звёзды, Premium & Игры</h1>
+        <p id="helloText">Загрузка профиля…</p>
+      </div>
+      <div class="hero-actions">
+        <button class="ghost" id="refreshBtn">🔄 Обновить</button>
+        <button class="ghost" id="openInventoryBtn">🎒 Инвентарь</button>
+      </div>
+    </header>
+
+    <section class="hero-metrics">
+      <div class="hero-metrics-main">
+        <article class="metric cardish metric-balance stars-metric">
+          <div class="metric-icon-wrap stars-icon-wrap">⭐</div>
+          <div class="metric-body">
+            <span class="metric-tag">Баланс Stars</span>
+            <strong id="starsBalance">0</strong>
+          </div>
+          <button type="button" class="balance-topup-btn stars-topup" id="topupStarsBtn" onclick="handleTopupStars(event)" title="Пополнить Stars" aria-label="Пополнить Stars">
+            <span class="plus-icon">+</span>
+          </button>
+        </article>
+        <article class="metric cardish metric-balance ton-metric">
+          <div class="metric-icon-wrap ton-icon-wrap">💠</div>
+          <div class="metric-body">
+            <span class="metric-tag">Баланс TON</span>
+            <strong id="tonBalance">0</strong>
+          </div>
+          <button type="button" class="balance-topup-btn ton-topup" id="topupTonBtn" onclick="handleTopupTon(event)" title="Пополнить TON" aria-label="Пополнить TON">
+            <span class="plus-icon">+</span>
+          </button>
+        </article>
+      </div>
+      <article class="metric cardish metric-stat">
+        <div class="metric-icon-wrap stat-icon-wrap">🛍️</div>
+        <div class="metric-body">
+          <span class="metric-tag">Куплено звёзд всего</span>
+          <strong id="totalBought">0</strong>
+        </div>
+      </article>
+    </section>
+
+    <nav class="tabs sections-nav">
+      <button type="button" class="tab active" data-tab="shop" onclick="switchTab('shop')">🛍️ Покупки</button>
+      <button type="button" class="tab" data-tab="games" onclick="switchTab('games')">🎮 Игры</button>
+      <button type="button" class="tab" data-tab="cases" onclick="switchTab('cases')">🎁 Кейсы</button>
+      <button type="button" class="tab" data-tab="tournaments" onclick="switchTab('tournaments')">🏆 Турниры</button>
+      <button type="button" class="tab" data-tab="inventory" onclick="switchTab('inventory')">🧩 Инвентарь</button>
+      <button type="button" class="tab" data-tab="referrals" onclick="switchTab('referrals')">👥 Рефералы</button>
+      <button type="button" class="tab" data-tab="support" onclick="switchTab('support')">💬 Поддержка</button>
+      <button type="button" class="tab" data-tab="history" onclick="switchTab('history')">📜 История</button>
+      <button type="button" class="tab hidden" data-tab="admin" id="adminTabBtn" onclick="switchTab('admin')">⚙️ Админка</button>
+    </nav>
+
+    <main>
+      <section class="tab-panel active" data-panel="shop">
+        <div class="shop-subtabs">
+          <button type="button" class="shop-subtab active" id="shopSubtabStars" data-shop-subtab="stars" onclick="switchShopSubtab('stars')">⭐ Звёзды & Premium</button>
+          <button type="button" class="shop-subtab" id="shopSubtabNft" data-shop-subtab="nft" onclick="switchShopSubtab('nft')">🎁 NFT Магазин</button>
+        </div>
+
+        <div id="shopStarsView" class="section-grid two-col">
+          <article class="cardish panel shop-card" id="shopStarsCard">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <h2>⭐ Купить Stars</h2>
+              </div>
+              <span class="hint" id="starsRateHint">—</span>
+            </div>
+            <div class="form-inputs-group">
+              <label>Количество звёзд<input id="starsAmount" type="number" min="50" max="10000" step="1" value="100" /></label>
+              <label>Кому
+                <select id="starsTargetMode">
+                  <option value="self">Себе</option>
+                  <option value="friend">Другу</option>
+                </select>
+              </label>
+              <label id="starsTargetWrap" class="hidden">@username получателя<input id="starsTargetUsername" type="text" placeholder="@username" /></label>
+              <label>Способ оплаты
+                <select id="starsPaymentMethod">
+                  <option value="mono">Mono (Карта)</option>
+                  <option value="ton_wallet">TON кошелёк</option>
+                  <option value="ton_balance">С TON баланса</option>
+                </select>
+              </label>
+            </div>
+            <div class="summary" id="starsPreview">Выберите параметры заказа.</div>
+            <div class="actions card-actions">
+              <button class="ghost" id="starsPreviewBtn">Посчитать</button>
+              <button class="primary" id="starsOrderBtn">Оформить</button>
+            </div>
+          </article>
+
+          <article class="cardish panel shop-card" id="shopPremiumCard">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <span class="eyebrow">Подписка Telegram</span>
+                <h2>👑 Купить Premium</h2>
+              </div>
+              <span class="hint">моментальная выдача</span>
+            </div>
+            <div class="form-inputs-group">
+              <label>Срок подписки
+                <select id="premiumMonths">
+                  <option value="1">1 месяц</option>
+                  <option value="3">3 месяца</option>
+                  <option value="6">6 месяцев</option>
+                  <option value="12">12 месяцев</option>
+                </select>
+              </label>
+              <label>@username получателя<input id="premiumTargetUsername" type="text" placeholder="@username или пусто (себе)" /></label>
+              <label>Способ оплаты
+                <select id="premiumPaymentMethod">
+                  <option value="mono">Mono (Карта)</option>
+                  <option value="ton_wallet">TON кошелёк</option>
+                  <option value="ton_balance">С TON баланса</option>
+                </select>
+              </label>
+            </div>
+            <div class="summary" id="premiumPreview">Выберите срок Premium.</div>
+            <div class="actions card-actions">
+              <button class="ghost" id="premiumPreviewBtn">Посчитать</button>
+              <button class="primary" id="premiumOrderBtn">Оформить</button>
+            </div>
+          </article>
+
+          <article class="cardish panel shop-card full-row" id="shopTonCard">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <span class="eyebrow">Криптовалюта</span>
+                <h2>💠 Купить TON</h2>
+              </div>
+              <span class="hint">актуальный курс при расчёте</span>
+            </div>
+            <div class="inline-grid compact-2 form-inputs-group">
+              <label>Сколько TON<input id="tonAmount" type="number" min="0.1" step="0.1" value="1" /></label>
+              <label>Способ оплаты
+                <select id="tonPaymentMethod">
+                  <option value="mono">Mono (Карта)</option>
+                  <option value="ton_wallet">TON кошелёк</option>
+                </select>
+              </label>
+            </div>
+            <div class="summary" id="tonPreview">Укажите количество TON.</div>
+            <div class="actions card-actions">
+              <button class="ghost" id="tonPreviewBtn">Посчитать</button>
+              <button class="primary" id="tonOrderBtn">Оформить</button>
+            </div>
+          </article>
+        </div>
+
+        <div id="shopNftView" class="nft-shop-view hidden">
+          <article class="cardish panel full-row nft-shop-panel">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <h2>🎁 NFT Магазин за Звёзды</h2>
+              </div>
+              <span class="hint" id="nftShopBalanceHint">Баланс: 0 ⭐</span>
+            </div>
+            <div class="nft-shop-toolbar">
+              <input type="text" id="nftShopSearch" placeholder="🔍 Поиск подарка по названию..." oninput="onNftShopFilterChange()" />
+              <select id="nftShopSort" onchange="onNftShopFilterChange()">
+                <option value="cheap">Сначала недорогие</option>
+                <option value="expensive">Сначала дорогие</option>
+                <option value="name">По названию (А-Я)</option>
+              </select>
+            </div>
+            <div class="nft-shop-rarity-filter" id="nftShopRarityFilter">
+              <button type="button" class="nft-rarity-pill active" data-rarity="all" onclick="setNftShopRarity('all')">Все</button>
+              <button type="button" class="nft-rarity-pill" data-rarity="common" onclick="setNftShopRarity('common')">Обычные</button>
+              <button type="button" class="nft-rarity-pill" data-rarity="rare" onclick="setNftShopRarity('rare')">Редкие</button>
+              <button type="button" class="nft-rarity-pill" data-rarity="epic" onclick="setNftShopRarity('epic')">Эпические</button>
+              <button type="button" class="nft-rarity-pill" data-rarity="legendary" onclick="setNftShopRarity('legendary')">Легендарные</button>
+              <button type="button" class="nft-rarity-pill" data-rarity="mythic" onclick="setNftShopRarity('mythic')">Мифические</button>
+            </div>
+            <div class="nft-shop-grid" id="nftShopGrid">
+              <!-- Rendered via JS -->
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="games">
+        <div class="games-mobile-heading panel-head">
+          <div class="panel-title-group">
+            <span class="eyebrow">Развлечения</span>
+            <h2>🎮 Игры</h2>
+          </div>
+          <span class="hint">краш, мины, рулетка и др.</span>
+        </div>
+        <div class="section-grid two-col">
+          <article class="cardish game-card" data-open-tab="cases">
+            <div class="game-icon">🎁</div>
+            <div>
+              <h2>Кейсы</h2>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="crash">
+            <div class="game-icon">📈</div>
+            <div>
+              <h2>Crash</h2>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="coin">
+            <div class="game-icon">🪙</div>
+            <div>
+              <h2>Монетка</h2>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="plinko">
+            <div class="game-icon">🔴</div>
+            <div class="game-copy">
+              <h2>Plinko</h2>
+              <p>Падающие шарики и множители до 100x+</p>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="tower">
+            <div class="game-icon">🏰</div>
+            <div class="game-copy">
+              <h2>Tower</h2>
+              <p>Поднимайтесь по этажам и умножайте ставку</p>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="blackjack">
+            <div class="game-icon">🃏</div>
+            <div class="game-copy">
+              <h2>Blackjack</h2>
+              <p>Классическое 21 очко против дилера</p>
+            </div>
+          </article>
+
+          <article class="cardish game-card" data-open-game="upgrade">
+            <div class="game-icon">⚡</div>
+            <div class="game-copy">
+              <h2>Апгрейды</h2>
+              <p>Колесо апгрейда: обменяй NFT или Stars на топовый приз</p>
+            </div>
+          </article>
+
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="cases">
+        <div class="section-grid one-col">
+          <article class="cardish panel full-row">
+            <div class="panel-head"><h2>Кейсы ⭐</h2></div>
+            <div class="casino-cases">
+              <article class="cardish game-card case-card" data-case="case150">
+                <div class="case-meta">
+                  <strong>Летний кейс (150⭐️)</strong>
+                  <div class="hint">150 ⭐ • 25–1200 ⭐</div>
+                </div>
+                <div class="case-wheel" aria-hidden="true">
+                  <div class="wheel-inner"></div>
+                </div>
+                <div class="case-actions">
+                  <button class="primary case-open-btn" data-case="case150">Купить и открыть</button>
+                  <span id="case150CaseCount">0</span>
+                </div>
+                <div class="case-result" id="case150CaseResult">Нажми кнопку, чтобы запустить прокрутку кейса.</div>
+              </article>
+
+              <article class="cardish game-card case-card" data-case="case250">
+                <div class="case-meta">
+                  <strong>Завоз (250⭐️)</strong>
+                  <div class="hint">250 ⭐ • 25–3768 ⭐</div>
+                </div>
+                <div class="case-wheel" aria-hidden="true">
+                  <div class="wheel-inner"></div>
+                </div>
+                <div class="case-actions">
+                  <button class="primary case-open-btn" data-case="case250">Купить и открыть</button>
+                  <span id="case250CaseCount">0</span>
+                </div>
+                <div class="case-result" id="case250CaseResult">Нажми кнопку, чтобы запустить прокрутку кейса.</div>
+              </article>
+
+              <article class="cardish game-card case-card" data-case="case400">
+                <div class="case-meta">
+                  <strong>Богатый (400⭐️)</strong>
+                  <div class="hint">400 ⭐ • 50–3768 ⭐</div>
+                </div>
+                <div class="case-wheel" aria-hidden="true">
+                  <div class="wheel-inner"></div>
+                </div>
+                <div class="case-actions">
+                  <button class="primary case-open-btn" data-case="case400">Купить и открыть</button>
+                  <span id="case400CaseCount">0</span>
+                </div>
+                <div class="case-result" id="case400CaseResult">Нажми кнопку, чтобы запустить прокрутку кейса.</div>
+              </article>
+
+              <article class="cardish game-card case-card" data-case="case600">
+                <div class="case-meta">
+                  <strong>Лакшери (600⭐️)</strong>
+                  <div class="hint">600 ⭐ • 200–5500 ⭐</div>
+                </div>
+                <div class="case-wheel" aria-hidden="true">
+                  <div class="wheel-inner"></div>
+                </div>
+                <div class="case-actions">
+                  <button class="primary case-open-btn" data-case="case600">Купить и открыть</button>
+                  <span id="case600CaseCount">0</span>
+                </div>
+                <div class="case-result" id="case600CaseResult">Нажми кнопку, чтобы запустить прокрутку кейса.</div>
+              </article>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="inventory">
+        <div class="section-grid one-col">
+          <article class="cardish panel">
+            <div class="panel-head"><h2>🧩 Инвентарь подарков</h2><span class="hint">NFT-подарки и звёздные призы</span></div>
+            <div id="inventoryList" class="inventory-grid"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="referrals">
+        <div class="section-grid one-col">
+          <article class="cardish panel full-row referral-hero-panel">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <span class="eyebrow">Партнёрская программа</span>
+                <h2>👥 Приглашай друзей и зарабатывай</h2>
+              </div>
+              <span class="hint">Пассивный доход в ⭐</span>
+            </div>
+            <p class="panel-lead">Получайте звёзды с каждой покупки ваших друзей в магазине Freaking Stars!</p>
+
+            <div class="referral-stats-grid">
+              <div class="ref-stat-card cardish">
+                <span class="ref-stat-icon">👥</span>
+                <div class="ref-stat-info">
+                  <span class="ref-stat-label">Приглашено друзей</span>
+                  <strong id="refCount">0</strong>
+                </div>
+              </div>
+              <div class="ref-stat-card cardish">
+                <span class="ref-stat-icon">⭐️</span>
+                <div class="ref-stat-info">
+                  <span class="ref-stat-label">Заработано Stars</span>
+                  <strong id="refEarnings">0</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="ref-link-box cardish">
+              <label for="refLinkInput">Ваша персональная реферальная ссылка:</label>
+              <div class="ref-link-row">
+                <input type="text" id="refLinkInput" readonly value="Загрузка ссылки..." />
+                <button type="button" class="ghost" id="refCopyBtn" onclick="copyReferralLink()">📋 Копировать</button>
+                <button type="button" class="primary" id="refShareBtn" onclick="shareReferralLink()">🚀 Пригласить</button>
+              </div>
+              <span class="hint" id="refCopyToast" style="display:none; color: #4ade80; margin-top: 6px;">✅ Ссылка скопирована в буфер обмена!</span>
+            </div>
+
+            <div class="ref-rewards-info cardish">
+              <h3>💰 Ваши условия вознаграждений:</h3>
+              <div class="ref-rewards-grid">
+                <div class="ref-reward-item">
+                  <div class="ref-reward-badge">5%</div>
+                  <div class="ref-reward-text">
+                    <strong>Покупки Stars</strong>
+                    <span>5% от любой суммы купленных звёзд</span>
+                  </div>
+                </div>
+                <div class="ref-reward-item">
+                  <div class="ref-reward-badge">👑 15–60 ⭐</div>
+                  <div class="ref-reward-text">
+                    <strong>Telegram Premium</strong>
+                    <span>1 мес: +15 ⭐ • 3 мес: +25 ⭐<br/>6 мес: +30 ⭐ • 12 мес: +60 ⭐</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ref-list-section">
+              <div class="panel-head" style="margin-top: 16px;">
+                <h3>📜 Приглашённые пользователи</h3>
+                <span class="hint" id="refListCountHint">0 чел.</span>
+              </div>
+              <div id="referralsList" class="stack-list empty-state">
+                У вас пока нет приглашённых друзей. Поделитесь ссылкой!
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="wallet">
+        <div class="section-grid two-col">
+          <article class="cardish panel">
+            <div class="panel-head"><h2>🐝 Вывести Stars</h2><span class="hint">от 50 до 10000</span></div>
+            <label>Количество<input id="withdrawStarsAmount" type="number" min="50" max="10000" step="1" value="50" /></label>
+            <button class="primary" id="withdrawStarsBtn">Отправить заявку</button>
+          </article>
+          <article class="cardish panel">
+            <div class="panel-head"><h2>💠 Вывести TON</h2><span class="hint">заявка админу</span></div>
+            <label>Количество<input id="withdrawTonAmount" type="number" min="0.1" step="0.1" value="1" /></label>
+            <button class="primary" id="withdrawTonBtn">Отправить заявку</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="reviews">
+        <div class="section-grid two-col">
+          <article class="cardish panel">
+            <div class="panel-head"><h2>Последние отзывы</h2><span class="hint">канал + база</span></div>
+            <div id="reviewsList" class="stack-list empty-state">Пока пусто.</div>
+          </article>
+          <article class="cardish panel">
+            <div class="panel-head"><h2>Оставить отзыв</h2><span class="hint" id="reviewsChannelHint">—</span></div>
+            <label>Текст отзыва<textarea id="reviewText" rows="7" placeholder="Напишите коротко и по делу"></textarea></label>
+            <div class="actions"><button id="reloadReviewsBtn">Обновить отзывы</button><button class="primary" id="sendReviewBtn">Отправить</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="promo">
+        <div class="section-grid one-col">
+          <article class="cardish panel">
+            <div class="panel-head"><h2>🎁 Промокод</h2><span class="hint">начисление на Stars баланс</span></div>
+            <label>Код<input id="promoCode" type="text" placeholder="Введите кодовое слово" /></label>
+            <div class="actions"><button class="primary" id="promoApplyBtn">Активировать</button></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="support">
+        <div class="section-grid two-col">
+          <article class="cardish panel">
+            <div class="panel-head"><h2>💬 Поддержка</h2><span class="hint">сообщение админу</span></div>
+            <label>Сообщение<textarea id="supportText" rows="7" placeholder="Опишите проблему"></textarea></label>
+            <button class="primary" id="supportSendBtn">Отправить</button>
+          </article>
+          <article class="cardish panel">
+            <div class="panel-head"><h2>💡 Предложения</h2><span class="hint">идеи по магазину</span></div>
+            <label>Сообщение<textarea id="suggestionText" rows="7" placeholder="Напишите идею"></textarea></label>
+            <button class="primary" id="suggestionSendBtn">Отправить</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="tournaments">
+        <div class="section-grid one-col">
+          <!-- Верхний блок со списком турниров -->
+          <article class="cardish panel tournament-hero-panel">
+            <div class="panel-head">
+              <div class="panel-title-group">
+                <span class="eyebrow">Соревнования & Призы</span>
+                <h2>🏆 Звёздные Турниры</h2>
+              </div>
+              <button class="ghost small" id="reloadTournamentsBtn" onclick="loadTournaments()">Обновить</button>
+            </div>
+            <p class="muted-note">Соревнуйтесь с другими игроками, поднимайтесь в таблице лидеров и выигрывайте Stars!</p>
+            
+            <div class="tournaments-filter-bar" id="tournamentsFilterBar">
+              <!-- Кнопки выбора турниров будут рендериться динамически -->
+            </div>
+          </article>
+
+          <!-- Детальная карточка выбранного турнира -->
+          <div id="tournamentDetailContainer">
+            <div class="empty-state">Загрузка турниров...</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="history">
+        <article class="cardish panel">
+          <div class="panel-head"><h2>История операций</h2><button class="ghost small" id="reloadHistoryBtn">Обновить</button></div>
+          <div id="historyList" class="stack-list empty-state">Пока пусто.</div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="admin">
+        <div class="admin-shell">
+          <div class="admin-top-nav cardish">
+            <div class="admin-title-row">
+              <span class="eyebrow">Панель управления</span>
+              <h2>⚙️ Администратор</h2>
+            </div>
+            <nav class="admin-subtabs" id="adminSubtabs" role="tablist" aria-label="Разделы администратора">
+              <button type="button" role="tab" id="adminTabDashboard" aria-controls="adminPanelDashboard" aria-selected="true" class="admin-subtab active" data-admin-tab="dashboard" onclick="switchAdminTab('dashboard')">📊 Дашборд</button>
+              <button type="button" role="tab" id="adminTabPricing" aria-controls="adminPanelPricing" aria-selected="false" class="admin-subtab" data-admin-tab="pricing" onclick="switchAdminTab('pricing')">💳 Финансы и цены</button>
+              <button type="button" role="tab" id="adminTabGames" aria-controls="adminPanelGames" aria-selected="false" class="admin-subtab" data-admin-tab="games" onclick="switchAdminTab('games')">🎮 Игры и RTP</button>
+              <button type="button" role="tab" id="adminTabUsers" aria-controls="adminPanelUsers" aria-selected="false" class="admin-subtab" data-admin-tab="users" onclick="switchAdminTab('users')">👥 Пользователи</button>
+              <button type="button" role="tab" id="adminTabMarketing" aria-controls="adminPanelMarketing" aria-selected="false" class="admin-subtab" data-admin-tab="marketing" onclick="switchAdminTab('marketing')">📢 Рассылка и промо</button>
+              <button type="button" role="tab" id="adminTabTournaments" aria-controls="adminPanelTournaments" aria-selected="false" class="admin-subtab" data-admin-tab="tournaments" onclick="switchAdminTab('tournaments')">🏆 Турниры</button>
+            </nav>
+          </div>
+
+          <!-- Вкладка 1: Дашборд и общая статистика -->
+          <div class="admin-subpanel active" id="adminPanelDashboard" role="tabpanel" aria-labelledby="adminTabDashboard" data-admin-panel="dashboard">
+            <div class="section-grid one-col">
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Общая аналитика</span>
+                    <h2>📊 Сводка дашборда</h2>
+                  </div>
+                  <span class="hint">живая статистика</span>
+                </div>
+                <div id="adminSummary" class="summary admin-stats-summary">Загрузка...</div>
+                <div class="actions">
+                  <button class="primary" id="adminReloadBtn">🔄 Обновить данные</button>
+                  <button class="ghost danger-btn" id="adminClearStatsBtn">🗑️ Очистить статистику игр</button>
+                  <button class="ghost danger-btn" id="adminRejectAllPendingBtn" style="color: #ff5252; border-color: #ff5252;">❌ Отклонить все заявки</button>
+                </div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Мониторинг отписок</span>
+                    <h2>Логи отписок</h2>
+                  </div>
+                  <span class="hint">Последние записи</span>
+                </div>
+                <div id="adminUnsubs" class="stack-list empty-state">Логи пусты.</div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Вкладка 2: Цены и финансы -->
+          <div class="admin-subpanel" id="adminPanelPricing" role="tabpanel" aria-labelledby="adminTabPricing" data-admin-panel="pricing" hidden>
+            <div class="section-grid two-col">
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Пакеты звёзд</span>
+                    <h2>⭐ Цены Stars</h2>
+                  </div>
+                  <span class="hint">Ручные пакеты, как NFT</span>
+                </div>
+                <label>Пакеты Stars (JSON объект)
+                  <textarea id="adminStarPackagesJson" rows="7" placeholder='{"50":36.5,"100":73,"150":107.25}'></textarea>
+                </label>
+                <div class="actions">
+                  <button class="primary" id="adminSaveStarPackagesBtn">Сохранить Stars пакеты</button>
+                  <button class="ghost" id="adminSaveStarsPerTonBtn">Сохранить коэффициент</button>
+                </div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Telegram подписки</span>
+                    <h2>👑 Цены Premium</h2>
+                  </div>
+                  <span class="hint">Формат JSON-объекта</span>
+                </div>
+                <label>Сроки и стоимость
+                  <textarea id="adminPremiumJson" rows="7" placeholder='{"1":600,"3":1500,"6":2800,"12":5200}'></textarea>
+                </label>
+                <div class="actions">
+                  <button class="primary" id="adminSavePremiumBtn">Сохранить Premium цены</button>
+                </div>
+              </article>
+
+              <article class="cardish panel full-row" id="adminAddNftCard">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Каталог товаров</span>
+                    <h2>➕ Добавить NFT подарок</h2>
+                  </div>
+                  <span class="hint">Создать новый товар для магазина</span>
+                </div>
+                <div class="inline-grid compact-3">
+                  <label>Идентификатор (model)
+                    <input type="text" id="adminNewNftModel" placeholder="напр. golden-trophy" />
+                  </label>
+                  <label>Цена в звёздах ⭐
+                    <input type="number" id="adminNewNftPrice" min="1" step="1" value="500" />
+                  </label>
+                  <label>Ссылка на картинку (URL)
+                    <input type="text" id="adminNewNftImage" placeholder="https://..." />
+                  </label>
+                </div>
+                <div class="actions">
+                  <button class="primary" id="adminAddNewNftBtn" type="button">Добавить в магазин</button>
+                </div>
+              </article>
+
+              <article class="cardish panel full-row">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">NFT Подарки</span>
+                    <h2>🎁 Цены NFT подарков</h2>
+                  </div>
+                  <span class="hint">Ручные цены в звездах</span>
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <input type="text" id="adminNftPriceSearch" placeholder="🔍 Поиск по названию или model..." oninput="filterAdminNftPrices()" />
+                </div>
+                <div id="adminNftPriceList" class="inline-grid compact-2"></div>
+                <div class="actions">
+                  <button class="primary" id="adminSaveNftPricesBtn">Сохранить NFT цены</button>
+                </div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Медиа ресурсы</span>
+                    <h2>🖼️ Изображения NFT</h2>
+                  </div>
+                  <span class="hint">Ссылки Fragment/HTTP</span>
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <input type="text" id="adminNftImageSearch" placeholder="🔍 Поиск по названию или model..." oninput="filterAdminNftImages()" />
+                </div>
+                <div id="adminNftImageList" class="inline-grid compact-2"></div>
+                <div class="actions">
+                  <button class="primary" id="adminSaveNftImagesBtn">Сохранить ссылки изображений</button>
+                </div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Дроп в кейсах</span>
+                    <h2>🎲 Шансы выпадения NFT (%)</h2>
+                  </div>
+                  <span class="hint">Вероятность для каждого подарка</span>
+                </div>
+                <div id="adminNftCaseChancesList" class="inline-grid compact-2"></div>
+                <div class="actions">
+                  <button class="primary" id="adminSaveNftCaseChancesBtn">Сохранить шансы выпадения</button>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Вкладка 3: Игры и RTP -->
+          <div class="admin-subpanel" id="adminPanelGames" role="tabpanel" aria-labelledby="adminTabGames" data-admin-panel="games" hidden>
+            <div class="section-grid one-col">
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Возврат игроку</span>
+                    <h2>🎰 RTP игр (%)</h2>
+                  </div>
+                  <span class="hint">Отдельно для каждой игры</span>
+                </div>
+                <div class="inline-grid compact-3">
+                  <label>Mines RTP %<input id="adminRtpMines" type="number" min="1" max="500" step="0.1" value="95" /></label>
+                  <label>Crash RTP %<input id="adminRtpCrash" type="number" min="1" max="500" step="0.1" value="95" /></label>
+                  <label>Roulette RTP %<input id="adminRtpRoulette" type="number" min="1" max="500" step="0.1" value="95" /></label>
+                  <label>Cases RTP %<input id="adminRtpCases" type="number" min="1" max="500" step="0.1" value="86" /></label>
+                  <label>Case150 RTP %<input id="adminRtpCase150" type="number" min="1" max="500" step="0.1" value="86" /></label>
+                  <label>Case250 RTP %<input id="adminRtpCase250" type="number" min="1" max="500" step="0.1" value="88" /></label>
+                  <label>Case400 RTP %<input id="adminRtpCase400" type="number" min="1" max="500" step="0.1" value="90" /></label>
+                  <label>Case600 RTP %<input id="adminRtpCase600" type="number" min="1" max="500" step="0.1" value="92" /></label>
+                  <label>Upgrade RTP %<input id="adminRtpUpgrade" type="number" min="1" max="500" step="0.1" value="95" /></label>
+                </div>
+                <div class="actions">
+                  <button class="primary" id="adminSaveRtpBtn">Сохранить RTP</button>
+                </div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Монетка</span>
+                    <h2>🪙 Настройки монетки</h2>
+                  </div>
+                  <span class="hint">Шансы и множители</span>
+                </div>
+                <div class="inline-grid compact-3">
+                  <label>Мин. ставка<input id="adminCoinMinBet" type="number" min="1" step="1" value="5" /></label>
+                  <label>Макс. ставка<input id="adminCoinMaxBet" type="number" min="1" step="1" value="10000" /></label>
+                  <label>Шанс Орла %<input id="adminCoinOddsEagle" type="number" min="0" max="100" step="0.1" value="45" /></label>
+                  <label>Шанс Решки %<input id="adminCoinOddsTails" type="number" min="0" max="100" step="0.1" value="45" /></label>
+                  <label>Шанс Ребра %<input id="adminCoinOddsEdge" type="number" min="0" max="100" step="0.1" value="10" /></label>
+                  <label>Множитель Орла<input id="adminCoinMulEagle" type="number" min="0.1" step="0.1" value="2" /></label>
+                  <label>Множитель Решки<input id="adminCoinMulTails" type="number" min="0.1" step="0.1" value="2" /></label>
+                  <label>Множитель Ребра<input id="adminCoinMulEdge" type="number" min="0.1" step="0.1" value="5" /></label>
+                </div>
+                <div class="actions">
+                  <button class="primary" id="adminSaveCoinSettingsBtn">Сохранить настройки монетки</button>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Вкладка 4: Пользователи и предложения -->
+          <div class="admin-subpanel" id="adminPanelUsers" role="tabpanel" aria-labelledby="adminTabUsers" data-admin-panel="users" hidden>
+            <div class="section-grid one-col">
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Поиск и управление</span>
+                    <h2>🔍 Трекинг пользователя</h2>
+                  </div>
+                  <span class="hint">ID или @username</span>
+                </div>
+                <div class="actions">
+                  <input id="adminTrackInput" type="text" placeholder="123456789 или @username" />
+                  <button class="primary" id="adminTrackBtn">Найти</button>
+                </div>
+                <div class="actions">
+                  <button class="ghost" id="adminResetMinesBtn" disabled>Сбросить игру "Мины" у пользователя</button>
+                  <button class="ghost" id="adminResetAllGamesBtn" disabled>Скинуть все игры</button>
+                </div>
+                <pre id="adminTrackResult" class="summary">Введите идентификатор пользователя.</pre>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Идеи и баги</span>
+                    <h2>💡 Предложения пользователей</h2>
+                  </div>
+                  <span class="hint">Модерация pending</span>
+                </div>
+                <div id="adminSuggestions" class="stack-list empty-state">Нет предложений.</div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Вкладка 5: Рассылка и маркетинг -->
+          <div class="admin-subpanel" id="adminPanelMarketing" role="tabpanel" aria-labelledby="adminTabMarketing" data-admin-panel="marketing" hidden>
+            <div class="section-grid two-col">
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Бонусы</span>
+                    <h2>🎁 Промокоды</h2>
+                  </div>
+                  <span class="hint">Создание новых кодов</span>
+                </div>
+                <div class="inline-grid compact-3">
+                  <label>Код<input id="adminPromoCode" type="text" placeholder="sale2025" /></label>
+                  <label>Макс. использований<input id="adminPromoMaxUses" type="number" min="1" value="50" /></label>
+                  <label>Начисление ⭐<input id="adminPromoAmount" type="number" min="1" value="25" /></label>
+                </div>
+                <div class="actions">
+                  <button class="primary" id="adminCreatePromoBtn">Создать промокод</button>
+                </div>
+                <div id="adminPromocodes" class="stack-list empty-state">Список промокодов пуст.</div>
+              </article>
+
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Массовые уведомления</span>
+                    <h2>📢 Рассылка</h2>
+                  </div>
+                  <span class="hint">Всем пользователям бота</span>
+                </div>
+                <label>Текст рассылки
+                  <textarea id="adminBroadcastText" rows="6" placeholder="Текст сообщения для рассылки..."></textarea>
+                </label>
+                <div class="actions">
+                  <button class="primary" id="adminBroadcastBtn">Отправить рассылку</button>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Вкладка 6: Управление турнирами -->
+          <div class="admin-subpanel" id="adminPanelTournaments" role="tabpanel" aria-labelledby="adminTabTournaments" data-admin-panel="tournaments" hidden>
+            <div class="tourn-admin-grid">
+              <!-- Форма создания турнира -->
+              <article class="cardish panel tourn-create-panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Новое соревнование</span>
+                    <h2>🏆 Создать турнир</h2>
+                  </div>
+                  <span class="hint">Параметры и условия</span>
+                </div>
+
+                <div class="form-inputs-group">
+                  <label>Название турнира
+                    <input id="adminTournTitle" type="text" placeholder="Например: Звёздный кубок осени" />
+                  </label>
+                  <label>Описание для игроков
+                    <textarea id="adminTournDesc" rows="2" placeholder="Краткое описание и правила..."></textarea>
+                  </label>
+                  <label>По чему турнир (Критерий)
+                    <select id="adminTournMetric" onchange="handleAdminMetricChange()">
+                      <option value="max_single_win">🔥 Самый большой разовый выигрыш в играх</option>
+                      <option value="total_win">💰 Сумма всех выигрышей в играх</option>
+                      <option value="max_single_purchase">⭐ Самая большая разовая покупка звёзд</option>
+                      <option value="total_stars_bought">🛍️ Общее количество купленных звёзд</option>
+                      <option value="total_bet">🎲 Общий оборот ставок в играх</option>
+                      <option value="games_won_count">🎯 Количество побед в играх</option>
+                    </select>
+                  </label>
+
+                  <div id="adminTournGamesWrap">
+                    <span class="field-label" style="display:block; font-size:12px; font-weight:600; margin-bottom:8px; color:var(--muted,#8e9f96);">Участвующие игры:</span>
+                    <div class="tourn-games-grid" id="adminTournGamesGrid">
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameMines" value="mines" checked /> <span>💣 Мины</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameCrash" value="crash" checked /> <span>🚀 Краш</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameRoulette" value="roulette" checked /> <span>🎡 Рулетка</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameCoin" value="coin" checked /> <span>🪙 Монетка</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameCases" value="cases" checked /> <span>🎁 Кейсы</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameTower" value="tower" checked /> <span>🧗 Башня</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGamePlinko" value="plinko" checked /> <span>🟢 Плинко</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameBlackjack" value="blackjack" checked /> <span>🃏 Блэкджек</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameDice" value="dice" checked /> <span>🎲 Кости</span></label>
+                      <label class="tourn-game-check-card"><input type="checkbox" id="adminTournGameUpgrade" value="upgrade" checked /> <span>⚡ Апгрейд</span></label>
+                    </div>
+                  </div>
+
+                  <div class="tourn-time-grid">
+                    <label>Дата и время начала
+                      <input id="adminTournStartTime" type="datetime-local" />
+                    </label>
+                    <label>Дата и время окончания
+                      <input id="adminTournEndTime" type="datetime-local" />
+                    </label>
+                  </div>
+
+                  <label>Общий призовой фонд (⭐)
+                    <input id="adminTournPrizePool" type="number" min="0" step="100" value="10000" oninput="handleAdminPrizePoolChange()" />
+                  </label>
+
+                  <!-- Prize row for each place -->
+                  <div id="adminTournPrizesSection">
+                    <!-- Place 1 -->
+                    <div class="tourn-prize-row" data-place="1">
+                      <div class="tourn-prize-row-head">
+                        <strong style="font-size:13px;">🥇 1 место</strong>
+                        <div class="prize-type-toggle">
+                          <button type="button" class="prize-type-btn active" data-place="1" data-type="stars" onclick="setPrizeType(1,'stars')">⭐ Звёзды</button>
+                          <button type="button" class="prize-type-btn" data-place="1" data-type="nft" onclick="setPrizeType(1,'nft')">🎁 NFT</button>
+                        </div>
+                      </div>
+                      <div class="prize-stars-wrap" id="prizeStarsWrap1">
+                        <label style="font-size:12px; margin:0;">Сумма (⭐) <input id="adminTournPrize1" type="number" min="0" value="5000" style="width:100%; margin-top:4px;" /></label>
+                      </div>
+                      <div class="prize-nft-wrap" id="prizeNftWrap1" style="display:none; margin-top:8px;">
+                        <input type="hidden" id="prizeNftModel1" />
+                        <div id="prizeNftEmpty1" class="tourn-nft-picker-btn" onclick="openTournamentNftModal(1)">
+                          <span style="font-size:18px;">🎁</span>
+                          <span style="font-weight:600; font-size:13px;">Выбрать подарок (NFT)...</span>
+                        </div>
+                        <div id="prizeNftPreview1" class="prize-nft-preview" style="display:none;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Place 2 -->
+                    <div class="tourn-prize-row" data-place="2">
+                      <div class="tourn-prize-row-head">
+                        <strong style="font-size:13px;">🥈 2 место</strong>
+                        <div class="prize-type-toggle">
+                          <button type="button" class="prize-type-btn active" data-place="2" data-type="stars" onclick="setPrizeType(2,'stars')">⭐ Звёзды</button>
+                          <button type="button" class="prize-type-btn" data-place="2" data-type="nft" onclick="setPrizeType(2,'nft')">🎁 NFT</button>
+                        </div>
+                      </div>
+                      <div class="prize-stars-wrap" id="prizeStarsWrap2">
+                        <label style="font-size:12px; margin:0;">Сумма (⭐) <input id="adminTournPrize2" type="number" min="0" value="3000" style="width:100%; margin-top:4px;" /></label>
+                      </div>
+                      <div class="prize-nft-wrap" id="prizeNftWrap2" style="display:none; margin-top:8px;">
+                        <input type="hidden" id="prizeNftModel2" />
+                        <div id="prizeNftEmpty2" class="tourn-nft-picker-btn" onclick="openTournamentNftModal(2)">
+                          <span style="font-size:18px;">🎁</span>
+                          <span style="font-weight:600; font-size:13px;">Выбрать подарок (NFT)...</span>
+                        </div>
+                        <div id="prizeNftPreview2" class="prize-nft-preview" style="display:none;"></div>
+                      </div>
+                    </div>
+
+                    <!-- Place 3 -->
+                    <div class="tourn-prize-row" data-place="3">
+                      <div class="tourn-prize-row-head">
+                        <strong style="font-size:13px;">🥉 3 место</strong>
+                        <div class="prize-type-toggle">
+                          <button type="button" class="prize-type-btn active" data-place="3" data-type="stars" onclick="setPrizeType(3,'stars')">⭐ Звёзды</button>
+                          <button type="button" class="prize-type-btn" data-place="3" data-type="nft" onclick="setPrizeType(3,'nft')">🎁 NFT</button>
+                        </div>
+                      </div>
+                      <div class="prize-stars-wrap" id="prizeStarsWrap3">
+                        <label style="font-size:12px; margin:0;">Сумма (⭐) <input id="adminTournPrize3" type="number" min="0" value="2000" style="width:100%; margin-top:4px;" /></label>
+                      </div>
+                      <div class="prize-nft-wrap" id="prizeNftWrap3" style="display:none; margin-top:8px;">
+                        <input type="hidden" id="prizeNftModel3" />
+                        <div id="prizeNftEmpty3" class="tourn-nft-picker-btn" onclick="openTournamentNftModal(3)">
+                          <span style="font-size:18px;">🎁</span>
+                          <span style="font-weight:600; font-size:13px;">Выбрать подарок (NFT)...</span>
+                        </div>
+                        <div id="prizeNftPreview3" class="prize-nft-preview" style="display:none;"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label>Минимальный порог (ставка / покупка, ⭐)
+                    <input id="adminTournMinThreshold" type="number" min="0" value="5" placeholder="0 — без порога" />
+                  </label>
+                </div>
+
+                <div class="actions">
+                  <button class="primary" id="adminCreateTournBtn" onclick="adminCreateTournament()">✨ Создать турнир</button>
+                </div>
+              </article>
+
+              <!-- Список турниров и управление -->
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Текущие & прошедшие</span>
+                    <h2>📋 Список турниров</h2>
+                  </div>
+                  <button class="ghost small" onclick="loadAdminTournaments()">Обновить</button>
+                </div>
+
+                <div id="adminTournamentsList" class="stack-list">
+                  <div class="empty-state">Загрузка турниров...</div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="proofModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="panel-head"><h3>Загрузить чек</h3><button id="closeProofModalBtn" class="ghost small">✕</button></div>
+      <div class="summary" id="proofDetails"></div>
+      <input id="proofFile" type="file" accept="image/*" />
+      <div class="actions"><button id="cancelProofBtn">Отмена</button><button class="primary" id="submitProofBtn">Отправить</button></div>
+    </div>
+  </div>
+
+  <div id="gameScreen" class="screen hidden">
+    <div class="screen-inner">
+      <div class="screen-topbar">
+        <button id="closeGameScreenBtn" class="ghost small">← Назад</button>
+        <div>
+          <div class="eyebrow">Игры</div>
+          <h2 id="gameScreenTitle">Игра</h2>
+        </div>
+      </div>
+
+      <div id="gameCrash" class="game-view hidden">
+        <div class="section-grid two-col">
+          <section class="panel cardish crash-stage-panel">
+            <div class="crash-stage">
+              <div class="crash-chart-grid"></div>
+              <div class="crash-graph">
+                <svg viewBox="0 0 100 70" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#4ea7ff" />
+                      <stop offset="65%" stop-color="#7c3aed" />
+                      <stop offset="100%" stop-color="#f43f5e" />
+                    </linearGradient>
+                  </defs>
+                  <polyline id="crashLine" points="0,70" fill="none" stroke="url(#lineGradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span id="crashRocket" class="crash-rocket" aria-hidden="true">🚀</span>
+                <span class="crash-star" aria-hidden="true">⭐</span>
+              </div>
+              <div id="crashMultiplierStream" class="crash-multiplier-stream" aria-hidden="true"></div>
+              <div class="crash-multiplier" id="crashLiveValue">1.00x</div>
+            </div>
+            <div id="crashResult" class="summary">Укажите ставку и x для автовывода.</div>
+            <div class="crash-actions-row">
+              <button class="primary" id="crashPlayBtn">Играть</button>
+              <button class="ghost" id="crashCashoutBtn" disabled>Забрать</button>
+            </div>
+          </section>
+          <section class="panel cardish">
+            <div class="panel-head"><h2>Crash</h2><span class="hint">автовывод или ручной выход</span></div>
+            <label>Ставка<input id="crashAmount" type="number" min="5" step="0.1" value="10" /></label>
+            <label>Валюта<select id="crashCurrency"><option value="stars">Stars</option><option value="ton">TON</option></select></label>
+            <label>Автовывод<input id="crashAutoX" type="number" min="1.01" max="9.88" step="0.01" value="1.50" /></label>
+          </section>
+        </div>
+      </div>
+
+      <div id="gameCoin" class="game-view hidden">
+        <div class="section-grid one-col">
+          <section class="panel cardish coin-panel">
+            <div class="panel-head"><h2>Монетка</h2><span class="hint">Выберите орла, решку или ребро</span></div>
+            <div class="coin-animation-wrap">
+              <div id="coinAnimation" class="coin-animation coin-face-eagle">
+                <span id="coinAnimationLabel" class="coin-animation-label">Орёл</span>
+              </div>
+              <div class="hint">Реальная анимация броска: результат появится после вращения</div>
+            </div>
+            <label>Ставка<input id="coinAmount" type="number" min="5" step="1" value="10" /></label>
+            <label>Валюта<select id="coinCurrency"><option value="stars">Stars</option><option value="ton">TON</option></select></label>
+            <label>Выбор<select id="coinChoice"><option value="eagle">Орёл</option><option value="tails">Решка</option><option value="edge">Ребро</option></select></label>
+            <div class="summary" id="coinResult">Сделайте ставку и нажмите играть.</div>
+            <div class="actions"><button class="primary" id="coinPlayBtn">Играть</button></div>
+          </section>
+        </div>
+      </div>
+
+      <div id="gamePlinko" class="game-view hidden">
+        <div class="section-grid two-col plinko-layout">
+          <section class="panel cardish plinko-stage-panel">
+            <div class="plinko-stage">
+              <canvas id="plinkoCanvas" width="600" height="700"></canvas>
+            </div>
+            <div id="plinkoResult" class="summary center-text">Выберите параметры и бросьте шарик.</div>
+          </section>
+          <section class="panel cardish plinko-controls-panel">
+            <div class="panel-head"><h2>Plinko</h2><span class="hint">Множители до 1000x</span></div>
+            <label>Общая ставка<input id="plinkoAmount" type="number" min="5" step="1" value="10" /></label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <label>Валюта<select id="plinkoCurrency"><option value="stars">Stars</option><option value="ton">TON</option></select></label>
+              <label>Шариков
+                <select id="plinkoBalls">
+                  <option value="1" selected>1 шарик</option>
+                  <option value="2">2 шарика</option>
+                  <option value="3">3 шарика</option>
+                  <option value="5">5 шариков</option>
+                  <option value="10">10 шариков</option>
+                  <option value="20">20 шариков</option>
+                </select>
+              </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <label>Ряды<select id="plinkoRows"><option value="8">8 рядов</option><option value="10" selected>10 рядов</option><option value="12">12 рядов</option><option value="14">14 рядов</option><option value="16">16 рядов</option></select></label>
+              <label>Риск<select id="plinkoRisk"><option value="low">Низкий</option><option value="medium" selected>Средний</option><option value="high">Высокий</option></select></label>
+            </div>
+            <div id="plinkoBallPriceHint" style="font-size: 13px; color: var(--hint); text-align: center; padding: 6px 10px; background: rgba(255,255,255,0.035); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+              Ставка за 1 шарик: <strong id="plinkoPerBallVal">10 ⭐</strong>
+            </div>
+            <div class="actions"><button class="primary" id="plinkoPlayBtn">Бросить шарик</button></div>
+          </section>
+        </div>
+      </div>
+
+      <div id="gameTower" class="game-view hidden">
+        <div class="section-grid two-col">
+          <section class="panel cardish tower-stage-panel">
+            <div class="tower-header-bar">
+              <div class="tower-floor-title">
+                <span class="eyebrow">Этаж башни</span>
+                <div class="tower-floor-heading"><span id="towerFloorDisplay">1</span> / 8 <span id="towerCoefDisplay" class="tower-coef-badge">(x1.40)</span></div>
+              </div>
+              <div id="towerProgressDots" class="tower-progress-dots"></div>
+            </div>
+            <div id="towerActiveFloor" class="tower-active-floor">
+              <div id="towerTilesRow" class="tower-tiles-row"></div>
+            </div>
+            <div id="towerStatus" class="summary center-text">Укажите ставку и начните восхождение.</div>
+          </section>
+          <section class="panel cardish">
+            <div class="panel-head"><h2>Tower</h2><span class="hint">Ступеньки с минами</span></div>
+            <label>Ставка<input id="towerAmount" type="number" min="5" step="1" value="10" /></label>
+            <label>Валюта<select id="towerCurrency"><option value="stars">Stars</option><option value="ton">TON</option></select></label>
+            <label>Сложность<select id="towerDifficulty"><option value="easy">Лёгкая (1 мина / 4 плитки)</option><option value="medium" selected>Средняя (1 мина / 3 плитки)</option><option value="hard">Сложная (1 мина / 2 плитки)</option></select></label>
+            <div class="actions">
+              <button class="primary" id="towerStartBtn">Начать игру</button>
+              <button class="primary ghost hidden" id="towerCashoutBtn">Забрать выигрыш</button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="gameBlackjack" class="game-view hidden">
+        <div class="section-grid one-col">
+          <section class="panel cardish bj-stage-panel">
+            <div class="panel-head"><h2>Blackjack</h2><span class="hint">Классическое 21</span></div>
+            <div class="bj-table">
+              <div class="bj-area">
+                <div class="bj-label"><span>Дилер</span><span id="bjDealerScore" class="bj-score" aria-live="polite">Очки: —</span></div>
+                <div id="bjDealerCards" class="bj-cards"></div>
+              </div>
+              <div id="bjStatus" class="summary center-text">Сделайте ставку, чтобы начать.</div>
+              <div class="bj-area">
+                <div class="bj-label"><span>Игрок</span><span id="bjPlayerScore" class="bj-score" aria-live="polite">Очки: —</span></div>
+                <div id="bjPlayerCards" class="bj-cards"></div>
+              </div>
+            </div>
+            <div class="bj-controls">
+              <div class="inline-grid compact-2">
+                <label>Ставка<input id="bjAmount" type="number" min="5" step="1" value="10" /></label>
+                <label>Валюта<select id="bjCurrency"><option value="stars">Stars</option><option value="ton">TON</option></select></label>
+              </div>
+              <div class="actions">
+                <button class="primary" id="bjDealBtn">Раздать карты</button>
+                <button class="ghost hidden" id="bjHitBtn">Ещё (Hit)</button>
+                <button class="ghost hidden" id="bjStandBtn">Хватит (Stand)</button>
+                <button class="ghost hidden" id="bjDoubleBtn">Удвоить и остановиться (x2)</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="gameUpgrade" class="game-view hidden">
+        <div class="upgrade-container">
+          <div class="upgrade-header-info">
+            <span class="upgrade-badge">Шанс до 95% • Колесо фортуны</span>
+            <p class="upgrade-subtitle">Выберите NFT или введите Stars, укажите желаемый подарок и крутите колесо</p>
+          </div>
+
+          <div class="upgrade-arena">
+            <!-- КВАДРАТ 1: ВАША СТАВКА -->
+            <div class="cardish upgrade-slot-card upgrade-source-card">
+              <div class="upgrade-slot-header">
+                <span class="upgrade-slot-tag">Ваша ставка</span>
+                <div class="upgrade-mode-toggle">
+                  <button type="button" class="upgrade-mode-btn active" id="upgradeModeNftBtn" onclick="setUpgradeBetMode('inventory')">🧩 NFT</button>
+                  <button type="button" class="upgrade-mode-btn" id="upgradeModeStarsBtn" onclick="setUpgradeBetMode('stars')">⭐ Stars</button>
+                </div>
+              </div>
+
+              <!-- NFT режим -->
+              <div id="upgradeSourceNftBox" class="upgrade-slot-body">
+                <div id="upgradeSourceNftEmpty" class="upgrade-empty-box" onclick="openUpgradeInventoryModal()">
+                  <div class="upgrade-empty-icon">+</div>
+                  <strong>Выбрать NFT</strong>
+                  <span class="hint">из инвентаря</span>
+                </div>
+                <div id="upgradeSourceNftSelected" class="upgrade-selected-box hidden">
+                  <button type="button" class="upgrade-box-clear" onclick="clearUpgradeBet(event)" title="Убрать ставку">✕</button>
+                  <div class="upgrade-item-img-wrap" onclick="openUpgradeInventoryModal()">
+                    <img id="upgradeSourceNftImg" src="" alt="NFT" />
+                  </div>
+                  <span class="upgrade-rarity-badge" id="upgradeSourceNftRarity">Rare</span>
+                  <div class="upgrade-item-title" id="upgradeSourceNftName">NFT Gift</div>
+                  <div class="upgrade-item-val"><span id="upgradeSourceNftValue">0</span> ⭐</div>
+                  <button type="button" class="ghost tiny upgrade-repick-btn" onclick="openUpgradeInventoryModal()">Сменить</button>
+                </div>
+              </div>
+
+              <!-- Stars режим -->
+              <div id="upgradeSourceStarsBox" class="upgrade-slot-body hidden">
+                <div class="upgrade-stars-box">
+                  <div class="upgrade-stars-icon-large">⭐</div>
+                  <div class="upgrade-stars-input-wrap">
+                    <input id="upgradeStarsInput" type="number" min="5" max="10000" step="1" value="50" oninput="onUpgradeStarsInput()" />
+                    <span class="upgrade-stars-unit">⭐</span>
+                  </div>
+                  <div class="upgrade-balance-row">
+                    <span class="hint">Баланс:</span>
+                    <strong id="upgradeUserStarsBalance">0</strong> ⭐
+                  </div>
+                  <div class="upgrade-quick-chips">
+                    <button type="button" class="chip-btn" data-amount="25">+25</button>
+                    <button type="button" class="chip-btn" data-amount="50">+50</button>
+                    <button type="button" class="chip-btn" data-amount="100">+100</button>
+                    <button type="button" class="chip-btn" data-amount="500">+500</button>
+                    <button type="button" class="chip-btn chip-max" data-max="true">MAX</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="upgrade-slot-footer">
+                <span>Итого ставка:</span>
+                <strong id="upgradeSourceTotalDisplay">0 ⭐</strong>
+              </div>
+            </div>
+
+            <!-- ЦЕНТР: КОЛЕСО АПГРЕЙДА -->
+            <div class="cardish upgrade-wheel-panel">
+              <div class="wheel-stage-container">
+                <!-- Стрелка-указатель сверху (на 12 часов) -->
+                <div class="wheel-pointer-wrap">
+                  <div class="wheel-pointer-arrow" id="upgradeWheelPointer"></div>
+                </div>
+
+                <!-- Само вращающееся колесо -->
+                <div class="wheel-outer-rim" id="upgradeWheelRim">
+                  <div id="upgradeWheel" class="upgrade-wheel-face"></div>
+                  <!-- Центральная ступица -->
+                  <div class="wheel-center-hub">
+                    <span class="hub-sub">ШАНС</span>
+                    <div class="hub-percent" id="upgradeWheelPercent">0.00%</div>
+                    <div class="hub-multiplier" id="upgradeWheelMultiplier">x0.00</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Результат/статус -->
+              <div id="upgradeStatusText" class="upgrade-status-text">
+                Выберите ставку и подарок для расчёта шанса
+              </div>
+
+              <!-- Кнопка запуска -->
+              <button type="button" class="primary upgrade-spin-button" id="upgradeSpinBtn" onclick="playUpgrade()">
+                <span class="btn-fire-icon">🔥</span>
+                <span id="upgradeSpinBtnLabel">СДЕЛАТЬ АПГРЕЙД</span>
+              </button>
+            </div>
+
+            <!-- КВАДРАТ 2: ЖЕЛАЕМЫЙ ПОДАРОК (NFT) -->
+            <div class="cardish upgrade-slot-card upgrade-target-card">
+              <div class="upgrade-slot-header">
+                <span class="upgrade-slot-tag">Желаемый подарок</span>
+                <button type="button" class="ghost small" id="upgradeOpenTargetModalBtn" onclick="openUpgradeTargetModal()">Каталог 🎁</button>
+              </div>
+
+              <div class="upgrade-slot-body">
+                <div id="upgradeTargetEmpty" class="upgrade-empty-box" onclick="openUpgradeTargetModal()">
+                  <div class="upgrade-empty-icon">🎁</div>
+                  <strong>Выбрать подарок</strong>
+                  <span class="hint">из кейсов</span>
+                </div>
+                <div id="upgradeTargetSelected" class="upgrade-selected-box hidden">
+                  <button type="button" class="upgrade-box-clear" onclick="clearUpgradeTarget(event)" title="Убрать цель">✕</button>
+                  <div class="upgrade-item-img-wrap" onclick="openUpgradeTargetModal()">
+                    <img id="upgradeTargetImg" src="" alt="Target NFT" />
+                  </div>
+                  <span class="upgrade-rarity-badge" id="upgradeTargetRarity">Epic</span>
+                  <div class="upgrade-item-title" id="upgradeTargetName">NFT Gift</div>
+                  <div class="upgrade-item-val"><span id="upgradeTargetValue">0</span> ⭐</div>
+                  <button type="button" class="ghost tiny upgrade-repick-btn" onclick="openUpgradeTargetModal()">Сменить</button>
+                </div>
+              </div>
+
+              <div class="upgrade-slot-footer">
+                <span>Стоимость цели:</span>
+                <strong id="upgradeTargetTotalDisplay">0 ⭐</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bannedScreen" class="banned-overlay hidden">
+    <div class="banned-card cardish">
+      <div class="banned-icon">🚫</div>
+      <h2>Доступ заблокирован</h2>
+      <p>Администратор заблокировал ваш аккаунт в боте и Mini App.</p>
+      <div class="banned-notice">
+        Если вы считаете, что это ошибка, обратитесь к администрации.
+      </div>
+    </div>
+  </div>
+
+  <div id="upgradeInventoryModal" class="modal hidden">
+    <div class="modal-card upgrade-modal-card">
+      <div class="panel-head">
+        <div class="panel-title-group">
+          <span class="eyebrow">Инвентарь</span>
+          <h3>Выберите NFT для апгрейда</h3>
+        </div>
+        <button type="button" id="closeUpgradeInventoryModalBtn" class="ghost small">✕</button>
+      </div>
+      <div id="upgradeInventoryModalList" class="upgrade-modal-grid">
+        <!-- Заполняется в JS -->
+      </div>
+    </div>
+  </div>
+
+  <div id="upgradeTargetModal" class="modal hidden">
+    <div class="modal-card upgrade-modal-card">
+      <div class="panel-head">
+        <div class="panel-title-group">
+          <span class="eyebrow">Кейсы и подарки</span>
+          <h3>Выберите желаемый подарок (NFT)</h3>
+        </div>
+        <button type="button" id="closeUpgradeTargetModalBtn" class="ghost small">✕</button>
+      </div>
+      <div class="upgrade-filter-bar">
+        <button type="button" class="upgrade-chip-filter active" data-rarity="all">Все</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="rare">Rare</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="epic">Epic</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="legendary">Legendary</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="mythic">Mythic</button>
+      </div>
+      <div id="upgradeTargetModalList" class="upgrade-modal-grid">
+        <!-- Заполняется в JS -->
+      </div>
+    </div>
+  </div>
+
+  <div id="upgradeWinModal" class="modal hidden">
+    <div class="modal-card upgrade-win-card">
+      <div class="upgrade-win-sparkles">🎉 ⚡ 🎉</div>
+      <h2 class="upgrade-win-title">Апгрейд успешен!</h2>
+      <p class="hint">Подарок успешно добавлен в ваш инвентарь</p>
+      <div class="upgrade-win-showcase">
+        <div class="upgrade-win-halo"></div>
+        <div class="upgrade-win-img-wrap">
+          <img id="upgradeWinImg" src="" alt="Won Gift" />
+        </div>
+        <span class="upgrade-rarity-badge" id="upgradeWinRarity">Legendary</span>
+        <h3 id="upgradeWinName">NFT Gift</h3>
+        <div class="upgrade-win-val">+<span id="upgradeWinValue">0</span> ⭐</div>
+      </div>
+      <div class="actions upgrade-win-actions">
+        <button type="button" class="ghost" id="upgradeWinInventoryBtn">В инвентарь</button>
+        <button type="button" class="primary" id="upgradeWinCloseBtn">Крутить ещё</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tournamentNftModal" class="modal hidden">
+    <div class="modal-card upgrade-modal-card tourn-nft-modal-card">
+      <div class="panel-head" style="margin-bottom: 10px;">
+        <div class="panel-title-group">
+          <span class="eyebrow" id="tournNftModalSubtitle">Приз для турнира</span>
+          <h3 id="tournNftModalTitle">Выберите NFT подарок</h3>
+        </div>
+        <button type="button" class="ghost small" onclick="closeTournamentNftModal()">✕</button>
+      </div>
+
+      <div style="margin-bottom: 10px;">
+        <input id="tournNftModalSearch" type="text" placeholder="🔍 Поиск по названию..." oninput="filterTournamentNftModal()" style="width: 100%; font-size: 13px; padding: 8px 12px;" />
+      </div>
+
+      <div class="upgrade-filter-bar" style="margin-bottom: 12px; gap: 4px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px;">
+        <button type="button" class="upgrade-chip-filter active" data-rarity="all" onclick="setTournNftModalRarity('all')">Все</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="common" onclick="setTournNftModalRarity('common')">Common</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="rare" onclick="setTournNftModalRarity('rare')">Rare</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="epic" onclick="setTournNftModalRarity('epic')">Epic</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="legendary" onclick="setTournNftModalRarity('legendary')">Legendary</button>
+        <button type="button" class="upgrade-chip-filter" data-rarity="mythic" onclick="setTournNftModalRarity('mythic')">Mythic</button>
+      </div>
+
+      <div id="tournNftModalGrid" class="upgrade-modal-grid" style="flex: 1; overflow-y: auto; padding-right: 4px; min-height: 250px;">
+        <!-- Заполняется в JS -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/webapp/assets/app.js?v=59"></script>
+</body>
+</html>

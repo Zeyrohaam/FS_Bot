@@ -1,0 +1,44 @@
+# Environment / secrets
+.env
+*.env
+secrets.py
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+
+# Data files (may contain user PII / balances)
+data/
+*.json
+!config.example.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Backups produced by the bot
+*.zip
+backups/
