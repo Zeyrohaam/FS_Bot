@@ -515,6 +515,7 @@
               <button type="button" role="tab" id="adminTabUsers" aria-controls="adminPanelUsers" aria-selected="false" class="admin-subtab" data-admin-tab="users" onclick="switchAdminTab('users')">👥 Пользователи</button>
               <button type="button" role="tab" id="adminTabMarketing" aria-controls="adminPanelMarketing" aria-selected="false" class="admin-subtab" data-admin-tab="marketing" onclick="switchAdminTab('marketing')">📢 Рассылка и промо</button>
               <button type="button" role="tab" id="adminTabTournaments" aria-controls="adminPanelTournaments" aria-selected="false" class="admin-subtab" data-admin-tab="tournaments" onclick="switchAdminTab('tournaments')">🏆 Турниры</button>
+              <button type="button" role="tab" id="adminTabShifts" aria-controls="adminPanelShifts" aria-selected="false" class="admin-subtab" data-admin-tab="shifts" onclick="switchAdminTab('shifts')">⏱ Смены</button>
             </nav>
           </div>
 
@@ -648,13 +649,13 @@
                 <div class="panel-head">
                   <div class="panel-title-group">
                     <span class="eyebrow">Дроп в кейсах</span>
-                    <h2>🎲 Шансы выпадения NFT (%)</h2>
+                    <h2>🎲 Шансы выпадения каждого приза из кейсов (%)</h2>
                   </div>
-                  <span class="hint">Вероятность для каждого подарка</span>
+                  <span class="hint">Настройте вероятность для каждого отдельного приза (звёзды и подарки) по каждому кейсу</span>
                 </div>
-                <div id="adminNftCaseChancesList" class="inline-grid compact-2"></div>
-                <div class="actions">
-                  <button class="primary" id="adminSaveNftCaseChancesBtn">Сохранить шансы выпадения</button>
+                <div id="adminNftCaseChancesList" class="section-grid one-col" style="gap: 16px;"></div>
+                <div class="actions" style="margin-top: 14px;">
+                  <button class="primary" id="adminSaveNftCaseChancesBtn">Сохранить шансы всех кейсов</button>
                 </div>
               </article>
             </div>
@@ -942,17 +943,113 @@
               </article>
             </div>
           </div>
+
+          <!-- Вкладка: Смены и X-отчеты -->
+          <div class="admin-subpanel" id="adminPanelShifts" role="tabpanel" aria-labelledby="adminTabShifts" data-admin-panel="shifts">
+            <div class="section-grid one-col">
+              <!-- Карточка текущей смены -->
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Операционная смена</span>
+                    <h2>⏱ Активная смена</h2>
+                  </div>
+                  <span class="hint" id="adminShiftStatusBadge">Загрузка...</span>
+                </div>
+                
+                <div id="adminShiftDetailsBox" class="summary admin-stats-summary" style="margin-bottom: 14px;">
+                  Загрузка статуса смены...
+                </div>
+
+                <div class="actions" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <button class="primary" id="adminShiftTakeBtn" onclick="handleAdminShiftTakeSelf()">🙋 Взять смену на себя</button>
+                  <button class="secondary" id="adminShiftTransferBtn" onclick="openShiftTransferModal()">🔄 Передать смену</button>
+                  <button class="secondary" id="adminShiftXReportBtn" onclick="handleAdminGenerateXReport()">📑 Снять X-отчёт</button>
+                  <button class="ghost danger-btn" id="adminShiftCloseBtn" onclick="handleAdminCloseShift()">🛑 Закрыть смену (Z-отчёт)</button>
+                </div>
+              </article>
+
+              <!-- Список сменщиков -->
+              <article class="cardish panel">
+                <div class="panel-head">
+                  <div class="panel-title-group">
+                    <span class="eyebrow">Персонал и реквизиты</span>
+                    <h2>👥 Доступные сменщики</h2>
+                  </div>
+                  <button class="ghost small" onclick="loadAdminShiftsState()">Обновить</button>
+                </div>
+                <div id="adminShiftWorkersList" class="stack-list">
+                  <div class="empty-state">Загрузка сменщиков...</div>
+                </div>
+              </article>
+            </div>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
   <div id="proofModal" class="modal hidden">
-    <div class="modal-card">
-      <div class="panel-head"><h3>Загрузить чек</h3><button id="closeProofModalBtn" class="ghost small">✕</button></div>
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="panel-head">
+        <h3>Загрузить чек</h3>
+        <button id="closeProofModalBtn" class="ghost small" type="button">✕</button>
+      </div>
       <div class="summary" id="proofDetails"></div>
-      <input id="proofFile" type="file" accept="image/*" />
-      <div class="actions"><button id="cancelProofBtn">Отмена</button><button class="primary" id="submitProofBtn">Отправить</button></div>
+
+      <div id="proofDropzone" class="proof-dropzone" style="position: relative; overflow: hidden; cursor: pointer;">
+        <input id="proofFile" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 5;" />
+        <div id="proofDropzoneContent" style="pointer-events: none;">
+          <span style="font-size: 32px; display: block; margin-bottom: 6px;">📷</span>
+          <div style="font-weight: 600; font-size: 14px; color: #fff;">Нажмите для выбора чека</div>
+          <div style="font-size: 12px; color: var(--hint); margin-top: 4px;">или вставьте из буфера (Ctrl+V) / перетащите файл</div>
+          <div style="margin-top: 8px; font-size: 12px; color: #a78bfa; font-weight: 600;">📁 Выбрать файл на компьютере</div>
+        </div>
+        <div id="proofFilePreview" class="hidden" style="text-align: center; width: 100%; position: relative; z-index: 6;">
+          <img id="proofPreviewImg" src="" alt="Превью чека" style="max-height: 140px; max-width: 100%; border-radius: 10px; object-fit: contain; box-shadow: 0 4px 14px rgba(0,0,0,0.4);" />
+          <div id="proofFileName" style="font-size: 13px; font-weight: 600; margin-top: 8px; color: #4ade80; word-break: break-all;"></div>
+          <div id="proofFileSize" style="font-size: 11px; color: var(--hint); margin-top: 2px;"></div>
+          <button type="button" class="ghost small" id="proofChangeFileBtn" style="margin-top: 10px; position: relative; z-index: 7;">🔄 Выбрать другой файл</button>
+        </div>
+      </div>
+
+      <div id="proofErrorHint" class="hidden" style="color: #f87171; font-size: 13px; font-weight: 500; text-align: center; padding: 8px 12px; background: rgba(239, 68, 68, 0.1); border-radius: 10px; border: 1px solid rgba(239, 68, 68, 0.25);"></div>
+
+      <div class="actions" style="margin-top: 4px;">
+        <button id="cancelProofBtn" type="button">Отмена</button>
+        <button class="primary" id="submitProofBtn" type="button">Отправить чек</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal для X-отчета в MiniApp -->
+  <div id="xReportModal" class="modal hidden">
+    <div class="modal-card" style="max-width: 500px;">
+      <div class="panel-head">
+        <h3 id="xReportModalTitle">📑 X-ОТЧЕТ</h3>
+        <button class="ghost small" type="button" onclick="closeXReportModal()">✕</button>
+      </div>
+      <div class="modal-body" style="white-space: pre-wrap; font-family: monospace; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 10px; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto;" id="xReportContent">
+      </div>
+      <div class="actions" style="margin-top: 12px;">
+        <button class="primary" type="button" onclick="closeXReportModal()">Понятно</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal для передачи смены в MiniApp -->
+  <div id="shiftTransferModal" class="modal hidden">
+    <div class="modal-card" style="max-width: 440px;">
+      <div class="panel-head">
+        <h3>🔄 Передача смены</h3>
+        <button class="ghost small" type="button" onclick="closeShiftTransferModal()">✕</button>
+      </div>
+      <p style="margin-bottom: 12px; font-size: 13px; color: var(--hint);">Выберите сменщика. Реквизиты бота и приложения мгновенно переключатся на него.</p>
+      <div id="shiftTransferWorkersOptions" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+      </div>
+      <div class="actions" style="margin-top: 14px;">
+        <button type="button" onclick="closeShiftTransferModal()">Отмена</button>
+      </div>
     </div>
   </div>
 

@@ -52,7 +52,6 @@ def bind_referral(user_id: int, referrer_id: int, username: str | None = None, b
     if user_id == referrer_id:
         return False
 
-    db.refresh()
     referrer_str = str(referrer_id)
     if referrer_str not in db.users:
         # Реферер не найден в базе
@@ -122,7 +121,6 @@ def reward_referrer_for_purchase(
     except (TypeError, ValueError):
         return 0.0
 
-    db.refresh()
     user_str = str(user_id)
     user_data = db.users.get(user_str)
     if not isinstance(user_data, dict):

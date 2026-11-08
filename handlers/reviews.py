@@ -94,13 +94,16 @@ async def process_review(message: Message, state: FSMContext, bot: Bot):
 
     safe_name = html_lib.escape(user.full_name or "Покупатель", quote=False)
 
-    await bot.send_message(
-        REVIEWS_CHANNEL,
-        f"⭐️ <b>Новый отзыв</b>\n\n"
-        f"{safe_text}\n\n"
-        f"— <i>{safe_name}</i>",
-        parse_mode="HTML",
-    )
+    try:
+        await bot.send_message(
+            REVIEWS_CHANNEL,
+            f"⭐️ <b>Новый отзыв</b>\n\n"
+            f"{safe_text}\n\n"
+            f"— <i>{safe_name}</i>",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
 
     await state.clear()
     await message.answer(

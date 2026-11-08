@@ -2,7 +2,6 @@
 .env
 *.env
 secrets.py
-.DS_Store
 
 # Python
 __pycache__/

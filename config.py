@@ -64,7 +64,7 @@ MODE_DEFAULTS = {
     'prod': PROD,
 }
 #Режим роботы
-APP_MODE = 'prod'
+APP_MODE = 'test'
 
 # Mini App / backend
 BACKEND_HOST = os.getenv('BACKEND_HOST', '0.0.0.0')

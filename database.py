@@ -61,6 +61,7 @@ class Database:
         self.pricing_settings: dict[str, Any] = {}
         self.tournaments: list[dict[str, Any]] = []
         self.game_events: list[dict[str, Any]] = []
+        self.shifts: dict[str, Any] = {}
         self.transaction_id_counter: int = 1
         self.suggestion_id_counter: int = 1
         self._users_snapshot: dict[str, dict[str, Any]] = {}
@@ -119,18 +120,45 @@ class Database:
             local = self.users if isinstance(self.users, dict) else {}
             latest = latest if isinstance(latest, dict) else {}
             merged = _merge_user_value(base, local, latest)
-            self.users = merged if isinstance(merged, dict) else {}
+            merged = merged if isinstance(merged, dict) else {}
+            if isinstance(self.users, dict):
+                for k in list(self.users.keys()):
+                    if k not in merged:
+                        del self.users[k]
+                for k, v in merged.items():
+                    if k in self.users and isinstance(self.users[k], dict) and isinstance(v, dict):
+                        self.users[k].clear()
+                        self.users[k].update(v)
+                    else:
+                        self.users[k] = v
+            else:
+                self.users = merged
             self._save_file("users_db.json", self.users)
             self._users_snapshot = deepcopy(self.users)
 
     def refresh(self):
-        self.load_data()
+        with _USERS_LOCK:
+            if self.users and self.users != getattr(self, "_users_snapshot", None):
+                self._save_users_file()
+            self.load_data()
 
     def refresh_pricing_settings(self):
         self.pricing_settings = self._load_file("pricing_db.json", {})
 
     def load_data(self):
-        self.users = self._load_file("users_db.json", {})
+        loaded_users = self._load_file("users_db.json", {})
+        if isinstance(self.users, dict) and isinstance(loaded_users, dict):
+            for k in list(self.users.keys()):
+                if k not in loaded_users:
+                    del self.users[k]
+            for k, v in loaded_users.items():
+                if k in self.users and isinstance(self.users[k], dict) and isinstance(v, dict):
+                    self.users[k].clear()
+                    self.users[k].update(v)
+                else:
+                    self.users[k] = v
+        else:
+            self.users = loaded_users
         self._users_snapshot = deepcopy(self.users) if isinstance(self.users, dict) else {}
         self.transactions = self._load_file("transactions_db.json", [])
         self.reviews = self._load_file("reviews_db.json", [])
@@ -172,6 +200,7 @@ class Database:
         self.pricing_settings = self._load_file("pricing_db.json", {})
         self.tournaments = self._load_file("tournaments_db.json", [])
         self.game_events = self._load_file("game_events_db.json", [])
+        self.shifts = self._load_file("shifts_db.json", {})
         self.transaction_id_counter = max((int(t.get("id", 0)) for t in self.transactions if str(t.get("id", "")).isdigit()), default=0) + 1
         self.suggestion_id_counter = max((int(s.get("id", 0)) for s in self.suggestions if str(s.get("id", "")).isdigit()), default=0) + 1
 
@@ -223,6 +252,8 @@ class Database:
         self._save_file("pricing_db.json", self.pricing_settings)
         self._save_file("tournaments_db.json", self.tournaments)
         self._save_file("game_events_db.json", self.game_events)
+        if self.shifts:
+            self._save_file("shifts_db.json", self.shifts)
 
     def add_sub_log(self, user_id: int, username: str | None, channel: str, action: str):
         self.sub_logs.append({

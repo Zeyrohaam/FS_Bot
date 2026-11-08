@@ -37,6 +37,10 @@ def add_star_balance(user_data: dict[str, Any], amount: Any) -> float:
         raise ValueError("amount must be a finite non-negative number")
     user_data["balance_stars"] = round(get_numeric_balance(user_data) + amount, 2)
     user_data["total_stars"] = round(float(user_data.get("total_stars", 0) or 0) + amount, 2)
+    uid = user_data.get("id") or user_data.get("user_id")
+    if uid and str(uid) in db.users and db.users[str(uid)] is not user_data:
+        db.users[str(uid)]["balance_stars"] = user_data["balance_stars"]
+        db.users[str(uid)]["total_stars"] = user_data["total_stars"]
     return float(user_data["balance_stars"])
 
 
@@ -48,6 +52,9 @@ def sub_star_balance(user_data: dict[str, Any], amount: Any) -> float:
     if amount > current:
         raise ValueError("insufficient balance")
     user_data["balance_stars"] = round(current - amount, 2)
+    uid = user_data.get("id") or user_data.get("user_id")
+    if uid and str(uid) in db.users and db.users[str(uid)] is not user_data:
+        db.users[str(uid)]["balance_stars"] = user_data["balance_stars"]
     return float(user_data["balance_stars"])
 
 
@@ -56,6 +63,9 @@ def add_ton_balance(user_data: dict[str, Any], amount: Any) -> float:
     if not math.isfinite(amount) or amount < 0:
         raise ValueError("amount must be a finite non-negative number")
     user_data["balance_ton"] = round(get_numeric_ton_balance(user_data) + amount, 4)
+    uid = user_data.get("id") or user_data.get("user_id")
+    if uid and str(uid) in db.users and db.users[str(uid)] is not user_data:
+        db.users[str(uid)]["balance_ton"] = user_data["balance_ton"]
     return float(user_data["balance_ton"])
 
 
@@ -67,6 +77,9 @@ def sub_ton_balance(user_data: dict[str, Any], amount: Any) -> float:
     if amount > current:
         raise ValueError("insufficient ton balance")
     user_data["balance_ton"] = round(current - amount, 4)
+    uid = user_data.get("id") or user_data.get("user_id")
+    if uid and str(uid) in db.users and db.users[str(uid)] is not user_data:
+        db.users[str(uid)]["balance_ton"] = user_data["balance_ton"]
     return float(user_data["balance_ton"])
 
 
@@ -98,10 +111,12 @@ def _ensure_user_game_stats(user_data: dict[str, Any]) -> bool:
 
 
 def register_user_if_needed(user_id: int, username: str | None = None) -> dict[str, Any]:
-    db.refresh()
     key = str(user_id)
     if key not in db.users:
+        db.refresh()
+    if key not in db.users:
         db.users[key] = {
+            "id": int(user_id),
             "username": username or "Не указан",
             "total_stars": 0,
             "balance_stars": 0,
@@ -133,6 +148,9 @@ def register_user_if_needed(user_id: int, username: str | None = None) -> dict[s
     else:
         changed = False
         db.users[key]["last_active"] = datetime.now().isoformat()
+        if "id" not in db.users[key]:
+            db.users[key]["id"] = int(user_id)
+            changed = True
         if "balance_stars" not in db.users[key]:
             db.users[key]["balance_stars"] = float(db.users[key].get("total_stars", 0) or 0)
             changed = True

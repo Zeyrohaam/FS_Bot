@@ -1094,6 +1094,11 @@ async function api(url, options = {}) {
   if (state.initData && !headers.has('X-Telegram-Init-Data')) {
     headers.set('X-Telegram-Init-Data', state.initData);
   }
+  if (init.body && typeof init.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  } else if (typeof FormData !== 'undefined' && init.body instanceof FormData) {
+    headers.delete('Content-Type');
+  }
   init.headers = headers;
   const response = await fetch(url, init);
   let data = {};
@@ -1324,6 +1329,9 @@ function switchAdminTab(name) {
   if (name === 'tournaments') {
     loadAdminTournaments().catch(e => console.error(e));
     setTimeout(initAdminTournGamesGrid, 20);
+  }
+  if (name === 'shifts') {
+    loadAdminShiftsState().catch(e => console.error(e));
   }
 }
 
@@ -1633,17 +1641,148 @@ function renderAdminNftImageInputs(images) {
   filterAdminNftImages();
 }
 
+const DEFAULT_CASE_DEFS = {
+  case150: {
+    label: "Летний кейс (150⭐️)",
+    cost: 150,
+    items: [
+      { id: "stars_25", label: "25 звёзд", icon: "⭐", value: 25, rarity: "common", default_chance: 73.86 },
+      { id: "lush-bouquet", label: "Lush Bouquet", icon: "💐", value: 517, rarity: "rare", default_chance: 4.0 },
+      { id: "pool-float", label: "Pool Float", icon: "🦒", value: 375, rarity: "common", default_chance: 4.0 },
+      { id: "instant-ramen", label: "Instant Ramen", icon: "🍜", value: 337, rarity: "common", default_chance: 5.0 },
+      { id: "ice-cream", label: "Ice Cream", icon: "🍦", value: 370, rarity: "common", default_chance: 5.64 },
+      { id: "ufc-box", label: "UFC Strike", icon: "🥊", value: 1200, rarity: "epic", default_chance: 3.0 },
+      { id: "stellar-rocket", label: "Stellar Rocket", icon: "🚀", value: 1100, rarity: "epic", default_chance: 2.0 },
+      { id: "chester-hat", label: "Jester Hat", icon: "🎩", value: 950, rarity: "rare", default_chance: 2.5 }
+    ]
+  },
+  case250: {
+    label: "Завоз (250⭐️)",
+    cost: 250,
+    items: [
+      { id: "stars_25", label: "25 звёзд", icon: "⭐", value: 25, rarity: "common", default_chance: 43.79 },
+      { id: "stars_75", label: "75 звёзд", icon: "⭐", value: 75, rarity: "common", default_chance: 43.79 },
+      { id: "ice-cream", label: "Ice Cream", icon: "🍦", value: 370, rarity: "common", default_chance: 2.9 },
+      { id: "liberty-figure", label: "Statue of Liberty", icon: "🗽", value: 335, rarity: "common", default_chance: 2.7 },
+      { id: "desk-calendar", label: "Desk Calendar", icon: "📅", value: 420, rarity: "common", default_chance: 2.1 },
+      { id: "big-year", label: "Big Year", icon: "🗓️", value: 290, rarity: "common", default_chance: 3.2 },
+      { id: "berry-box", label: "Berry Box", icon: "🫐", value: 670, rarity: "rare", default_chance: 1.5 },
+      { id: "eternal-rose", label: "Eternal Rose", icon: "🌹", value: 1957, rarity: "legendary", default_chance: 0.01 },
+      { id: "bonded-rind", label: "Bonded Ring", icon: "🧩", value: 3768, rarity: "legendary", default_chance: 0.01 }
+    ]
+  },
+  case400: {
+    label: "Богатый (400⭐️)",
+    cost: 400,
+    items: [
+      { id: "stars_50", label: "50 звёзд", icon: "⭐", value: 50, rarity: "common", default_chance: 25.1 },
+      { id: "stars_100", label: "100 звёзд", icon: "⭐", value: 100, rarity: "common", default_chance: 25.1 },
+      { id: "candy-cane", label: "Candy Cane", icon: "🍬", value: 370, rarity: "common", default_chance: 14.9 },
+      { id: "liberty-figure", label: "Statue of Liberty", icon: "🗽", value: 335, rarity: "common", default_chance: 16.3 },
+      { id: "love-candle", label: "Love Candle", icon: "🕯️", value: 731, rarity: "rare", default_chance: 8.2 },
+      { id: "crystal-ball", label: "Crystal Ball", icon: "🔮", value: 1100, rarity: "epic", default_chance: 5.3 },
+      { id: "flying-broom", label: "Flying Broom", icon: "🧹", value: 1057, rarity: "epic", default_chance: 4.9 },
+      { id: "genie-lamp", label: "Genie Lamp", icon: "🪔", value: 2200, rarity: "legendary", default_chance: 0.2 },
+      { id: "loot-bag", label: "Loot Bag", icon: "👜", value: 3768, rarity: "legendary", default_chance: 0.0 }
+    ]
+  },
+  case600: {
+    label: "Лакшери (600⭐️)",
+    cost: 600,
+    items: [
+      { id: "stars_200", label: "200 звёзд", icon: "⭐", value: 200, rarity: "common", default_chance: 33.85 },
+      { id: "ginger-cookie", label: "Ginger Cookie", icon: "🍪", value: 370, rarity: "common", default_chance: 18.0 },
+      { id: "liberty-figure", label: "Statue of Liberty", icon: "🗽", value: 335, rarity: "common", default_chance: 15.0 },
+      { id: "bunny-mafin", label: "Bunny Muffin", icon: "🐰", value: 731, rarity: "rare", default_chance: 16.0 },
+      { id: "crystal-ball", label: "Crystal Ball", icon: "🔮", value: 1100, rarity: "epic", default_chance: 11.0 },
+      { id: "eternal-rose", label: "Eternal Rose", icon: "🌹", value: 1957, rarity: "legendary", default_chance: 6.1 },
+      { id: "magic-potion", label: "Magic Potion", icon: "🧪", value: 5500, rarity: "mythic", default_chance: 0.05 },
+      { id: "astral-shard", label: "Astral Shard", icon: "✨", value: 1059, rarity: "epic", default_chance: 0.0 }
+    ]
+  }
+};
+
+window.recalcAdminCaseTierTotal = function(tier) {
+  let sum = 0;
+  document.querySelectorAll(`input[data-case-tier="${tier}"]`).forEach((inp) => {
+    sum += Number(inp.value || 0);
+  });
+  const el = document.getElementById(`caseTotal_${tier}`);
+  if (el) {
+    el.textContent = `${sum.toFixed(2)}%`;
+    el.style.color = Math.abs(sum - 100) < 0.05 ? '#4ade80' : 'rgba(255,255,255,0.9)';
+  }
+};
+
 function renderAdminNftCaseChancesInputs(chances) {
   const wrap = $('adminNftCaseChancesList');
   if (!wrap) return;
-  const chanceMap = chances || state.bootstrap?.pricing?.nft_case_chances || {};
-  const priceMap = state.bootstrap?.pricing?.nft_gift_prices || {};
-  const models = Object.keys(priceMap).length ? Object.keys(priceMap) : Object.keys(chanceMap);
-  wrap.innerHTML = models.map((model) => `
-    <label>${model}
-      <input type="number" min="0" step="0.01" data-nft-case-chance-model="${model}" value="${Number(chanceMap[model] || 0)}" placeholder="0.00" />
-    </label>
-  `).join('');
+  const caseDefs = state.bootstrap?.pricing?.case_definitions || DEFAULT_CASE_DEFS;
+  const savedChances = chances || state.bootstrap?.pricing?.case_chances || {};
+
+  const html = Object.entries(caseDefs).map(([tier, cdef]) => {
+    const tierSaved = savedChances[tier] || {};
+    const items = cdef.items || [];
+    let tierTotal = 0;
+
+    const itemsHtml = items.map((item) => {
+      const currentVal = tierSaved[item.id] !== undefined ? tierSaved[item.id] : item.default_chance;
+      const valNum = Number(currentVal !== undefined ? currentVal : (item.chance_percent || 0));
+      tierTotal += valNum;
+      const rarityLabel = {
+        common: 'Обычный',
+        rare: 'Редкий',
+        epic: 'Эпический',
+        legendary: 'Легендарный',
+        mythic: 'Мифический',
+      }[item.rarity] || item.rarity;
+
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+            <span style="font-size:18px;">${item.icon || '🎁'}</span>
+            <div style="min-width:0;">
+              <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.label || item.name}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.45);">${item.value ? item.value + ' ⭐ · ' : ''}${rarityLabel}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <input type="number" min="0" max="100" step="0.01"
+              data-case-tier="${tier}"
+              data-case-item-id="${item.id}"
+              data-nft-case-chance-model="${item.model || item.id}"
+              value="${valNum}"
+              placeholder="0.00"
+              style="width:80px;text-align:right;padding:4px 6px;font-size:13px;"
+              oninput="recalcAdminCaseTierTotal('${tier}')"
+            />
+            <span style="font-size:12px;color:rgba(255,255,255,0.6);">%</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="cardish" style="padding:14px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.02);margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <h3 style="margin:0;font-size:15px;display:flex;align-items:center;gap:6px;">
+              <span>📦</span> ${cdef.label || tier}
+            </h3>
+            <span style="font-size:12px;color:rgba(255,255,255,0.5);">Цена открытия: <b>${cdef.cost || 0} ⭐</b></span>
+          </div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.6);text-align:right;">
+            Сумма: <b id="caseTotal_${tier}">${tierTotal.toFixed(2)}%</b>
+          </div>
+        </div>
+        <div class="inline-grid compact-2" style="gap:8px;">
+          ${itemsHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  wrap.innerHTML = html;
 }
 
 function renderAdminDashboard() {
@@ -1679,7 +1818,7 @@ function renderAdminDashboard() {
   if ($('adminCoinMulEdge')) $('adminCoinMulEdge').value = Number(coinSettings.multipliers?.edge || 5);
   renderAdminNftPriceInputs(dash.prices?.nft_gift_prices || state.bootstrap?.pricing?.nft_gift_prices || {});
   renderAdminNftImageInputs(dash.prices?.nft_gift_images || state.bootstrap?.pricing?.nft_gift_images || {});
-  renderAdminNftCaseChancesInputs(dash.prices?.nft_case_chances || state.bootstrap?.pricing?.nft_case_chances || {});
+  renderAdminNftCaseChancesInputs(dash.prices?.case_chances || state.bootstrap?.pricing?.case_chances || dash.prices?.nft_case_chances || {});
 }
 
 async function loadAdminDashboard() {
@@ -1693,6 +1832,8 @@ async function loadAdminDashboard() {
     state.bootstrap.pricing.nft_gift_prices = data.prices.nft_gift_prices || state.bootstrap.pricing.nft_gift_prices;
     state.bootstrap.pricing.nft_gift_images = data.prices.nft_gift_images || state.bootstrap.pricing.nft_gift_images;
     state.bootstrap.pricing.nft_case_chances = data.prices.nft_case_chances || state.bootstrap.pricing.nft_case_chances;
+    state.bootstrap.pricing.case_chances = data.prices.case_chances || state.bootstrap.pricing.case_chances;
+    state.bootstrap.pricing.case_definitions = data.prices.case_definitions || state.bootstrap.pricing.case_definitions;
     state.bootstrap.pricing.game_rtp_percent = data.prices.game_rtp_percent || state.bootstrap.pricing.game_rtp_percent;
     state.bootstrap.pricing.coin_game_settings = data.prices.coin_game_settings || state.bootstrap.pricing.coin_game_settings;
   }
@@ -1827,6 +1968,88 @@ async function buyUpgrade(upgrade) {
   }
 }
 
+function handleProofFileSelect(file) {
+  if (!file) return;
+  state.pendingProofFile = file;
+
+  const dropzoneContent = $('proofDropzoneContent');
+  const filePreview = $('proofFilePreview');
+  const previewImg = $('proofPreviewImg');
+  const fileName = $('proofFileName');
+  const fileSize = $('proofFileSize');
+  const dropzone = $('proofDropzone');
+  const errorHint = $('proofErrorHint');
+  const submitBtn = $('submitProofBtn');
+
+  if (errorHint) {
+    errorHint.textContent = '';
+    errorHint.classList.add('hidden');
+  }
+  if (dropzone) {
+    dropzone.classList.remove('has-error');
+    dropzone.classList.add('has-file');
+  }
+
+  if (fileName) fileName.textContent = file.name;
+  if (fileSize) {
+    const sizeKb = (file.size / 1024).toFixed(1);
+    const sizeStr = file.size > 1024 * 1024 ? (file.size / (1024 * 1024)).toFixed(2) + ' МБ' : sizeKb + ' КБ';
+    fileSize.textContent = `Размер: ${sizeStr}`;
+  }
+
+  if (file.type && file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (previewImg) {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  } else {
+    if (previewImg) previewImg.style.display = 'none';
+  }
+
+  if (dropzoneContent) dropzoneContent.classList.add('hidden');
+  if (filePreview) filePreview.classList.remove('hidden');
+  const fileInput = $('proofFile');
+  if (fileInput) fileInput.style.pointerEvents = 'none';
+
+  if (submitBtn) {
+    submitBtn.textContent = '✅ Отправить чек';
+    submitBtn.disabled = false;
+  }
+}
+
+function clearProofFile() {
+  state.pendingProofFile = null;
+  const file = $('proofFile');
+  if (file) {
+    file.value = '';
+    file.style.pointerEvents = 'auto';
+  }
+
+  const dropzoneContent = $('proofDropzoneContent');
+  const filePreview = $('proofFilePreview');
+  const previewImg = $('proofPreviewImg');
+  const dropzone = $('proofDropzone');
+  const errorHint = $('proofErrorHint');
+  const submitBtn = $('submitProofBtn');
+
+  if (previewImg) previewImg.src = '';
+  if (filePreview) filePreview.classList.add('hidden');
+  if (dropzoneContent) dropzoneContent.classList.remove('hidden');
+  if (dropzone) dropzone.classList.remove('has-file', 'has-error');
+  if (errorHint) {
+    errorHint.textContent = '';
+    errorHint.classList.add('hidden');
+  }
+  if (submitBtn) {
+    submitBtn.textContent = 'Отправить чек';
+    submitBtn.disabled = false;
+  }
+}
+
 function setProofModal(open) {
   const modal = $('proofModal');
   if (!modal) return;
@@ -1837,7 +2060,7 @@ function setProofModal(open) {
   const file = $('proofFile');
   if (btn) {
     btn.disabled = false;
-    btn.textContent = 'Отправить';
+    btn.textContent = 'Отправить чек';
   }
   if (cancelBtn) cancelBtn.disabled = false;
   if (closeBtn) closeBtn.disabled = false;
@@ -1845,6 +2068,7 @@ function setProofModal(open) {
     file.disabled = false;
     if (!open) file.value = '';
   }
+  clearProofFile();
   if (!open) {
     state.pendingProof = null;
     state.isUploadingProof = false;
@@ -2007,10 +2231,33 @@ async function createTonOrder() {
 }
 
 async function uploadProof() {
-  if (!state.pendingProof || state.isUploadingProof) return;
+  if (state.isUploadingProof) return;
+  if (!state.pendingProof) {
+    toast('Сессия заказа устарела. Попробуйте снова.', 'error');
+    setProofModal(false);
+    return;
+  }
+
   const fileInput = $('proofFile');
-  const file = fileInput?.files?.[0];
-  if (!file) return toast('Выберите изображение чека', 'error');
+  const file = state.pendingProofFile || fileInput?.files?.[0];
+
+  const errorHint = $('proofErrorHint');
+  const dropzone = $('proofDropzone');
+
+  if (!file) {
+    if (errorHint) {
+      errorHint.textContent = '⚠️ Пожалуйста, сначала прикрепите фото или скриншот чека';
+      errorHint.classList.remove('hidden');
+    }
+    if (dropzone) {
+      dropzone.classList.remove('has-error');
+      void dropzone.offsetWidth;
+      dropzone.classList.add('has-error');
+    }
+    toast('Выберите изображение чека', 'error');
+    if (fileInput) fileInput.click();
+    return;
+  }
 
   const btn = $('submitProofBtn');
   const cancelBtn = $('cancelProofBtn');
@@ -2019,7 +2266,7 @@ async function uploadProof() {
   state.isUploadingProof = true;
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Отправлено';
+    btn.textContent = '⏳ Отправка...';
   }
   if (cancelBtn) cancelBtn.disabled = true;
   if (closeBtn) closeBtn.disabled = true;
@@ -2032,8 +2279,8 @@ async function uploadProof() {
     form.append('payload_json', JSON.stringify(state.pendingProof.payload));
     form.append('proof', file);
     const data = await api('/api/proof/upload', { method: 'POST', body: form });
-    const msg = data?.message || 'Чек отправлен';
-    toast(typeof msg === 'string' ? msg : String(msg));
+    const msg = data?.message || 'Чек успешно отправлен на проверку администратору!';
+    toast(typeof msg === 'string' ? msg : String(msg), 'success');
     state.bootstrap.transactions = data.transactions;
     renderHistory();
     setProofModal(false);
@@ -2042,12 +2289,16 @@ async function uploadProof() {
     state.isUploadingProof = false;
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Отправить';
+      btn.textContent = '✅ Отправить чек';
     }
     if (cancelBtn) cancelBtn.disabled = false;
     if (closeBtn) closeBtn.disabled = false;
     if (fileInput) fileInput.disabled = false;
-    throw err;
+    if (errorHint) {
+      errorHint.textContent = err.message || 'Ошибка отправки чека';
+      errorHint.classList.remove('hidden');
+    }
+    toast(err.message || 'Ошибка отправки чека', 'error');
   }
 }
 
@@ -2252,20 +2503,45 @@ async function adminSaveNftImages() {
 }
 
 async function adminSaveNftCaseChances() {
-  const chances = {};
-  document.querySelectorAll('[data-nft-case-chance-model]').forEach((input) => {
-    const model = String(input.dataset.nftCaseChanceModel || '').trim().toLowerCase();
-    const value = Number(input.value || 0);
-    if (model && Number.isFinite(value) && value >= 0) {
-      chances[model] = Math.round(value * 100) / 100;
+  const groupedByTier = {};
+  const legacyChances = {};
+
+  document.querySelectorAll('input[data-case-tier][data-case-item-id]').forEach((input) => {
+    const tier = String(input.dataset.caseTier || '').trim();
+    const itemId = String(input.dataset.caseItemId || '').trim();
+    const val = Number(input.value || 0);
+    if (tier && itemId && Number.isFinite(val) && val >= 0) {
+      if (!groupedByTier[tier]) groupedByTier[tier] = {};
+      const rounded = Math.round(val * 100) / 100;
+      groupedByTier[tier][itemId] = rounded;
+      const model = input.dataset.nftCaseChanceModel;
+      if (model) legacyChances[model] = rounded;
     }
   });
-  await api('/api/admin/prices/nft-case-chances', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ init_data: state.initData, chances }),
-  });
-  toast('Шансы выпадения NFT в кейсах сохранены');
+
+  try {
+    await api('/api/admin/prices/case-chances', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: state.initData, chances: groupedByTier }),
+    });
+  } catch (err) {
+    console.error('Failed to save case chances via case-chances API:', err);
+  }
+
+  try {
+    if (Object.keys(legacyChances).length) {
+      await api('/api/admin/prices/nft-case-chances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: state.initData, chances: legacyChances }),
+      });
+    }
+  } catch (err) {
+    // optional fallback
+  }
+
+  toast('Шансы призов для всех кейсов успешно сохранены');
   await loadAdminDashboard();
 }
 
@@ -4387,6 +4663,53 @@ function bind() {
   if ($('closeProofModalBtn')) $('closeProofModalBtn').addEventListener('click', () => { if (!state.isUploadingProof) setProofModal(false); });
   if ($('cancelProofBtn')) $('cancelProofBtn').addEventListener('click', () => { if (!state.isUploadingProof) setProofModal(false); });
 
+  const dropzone = $('proofDropzone');
+  const fileInput = $('proofFile');
+  if (dropzone && fileInput) {
+    $('proofChangeFileBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      clearProofFile();
+      try { fileInput.click(); } catch (_) {}
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) {
+        handleProofFileSelect(fileInput.files[0]);
+      }
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer?.files?.[0]) {
+        handleProofFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  window.addEventListener('paste', (e) => {
+    const modal = $('proofModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.startsWith('image/')) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `receipt_${Date.now()}.png`, { type: blob.type });
+          handleProofFileSelect(file);
+          toast('Чек вставлен из буфера обмена!', 'success');
+          break;
+        }
+      }
+    }
+  });
+
   if ($('adminReloadBtn')) $('adminReloadBtn').addEventListener('click', () => loadAdminDashboard().catch(e => toast(e.message, 'error')));
   if ($('adminSaveStarPackagesBtn')) $('adminSaveStarPackagesBtn').addEventListener('click', () => adminSaveStarPackages().catch(e => toast(e.message, 'error')));
   if ($('adminSavePremiumBtn')) $('adminSavePremiumBtn').addEventListener('click', () => adminSavePremiumPrices().catch(e => toast(e.message, 'error')));
@@ -5263,6 +5586,306 @@ window.copyReferralLink = copyReferralLink;
 window.shareReferralLink = shareReferralLink;
 window.renderReferrals = renderReferrals;
 window.adminResetTrackedUserAllGames = adminResetTrackedUserAllGames;
+
+// ==============================
+// УПРАВЛЕНИЕ СМЕНАМИ В МИНИ-АППКЕ
+// ==============================
+let adminShiftsCachedState = null;
+
+async function loadAdminShiftsState() {
+  const badge = document.getElementById('adminShiftStatusBadge');
+  const details = document.getElementById('adminShiftDetailsBox');
+  const list = document.getElementById('adminShiftWorkersList');
+  if (badge) badge.textContent = 'Обновление...';
+  try {
+    const q = state.initData ? `?init_data=${encodeURIComponent(state.initData)}` : '';
+    const data = await api(`/api/admin/shifts/state${q}`);
+    adminShiftsCachedState = data;
+    const cur = data.current_shift;
+    const m = data.current_metrics || {};
+
+    if (badge) {
+      if (cur) {
+        badge.textContent = '🟢 Активна';
+        badge.style.color = '#4ade80';
+      } else {
+        badge.textContent = '⚪️ Не открыта';
+        badge.style.color = 'var(--hint)';
+      }
+    }
+
+    if (details) {
+      if (!cur) {
+        details.innerHTML = `
+          <div style="padding: 10px 0; color: var(--hint);">
+            <strong>Смена не открыта.</strong><br>
+            Сейчас платежи принимаются на стандартные реквизиты бота.<br>
+            Нажмите <em>«Взять смену на себя»</em> или выберите сменщика из списка ниже.
+          </div>
+        `;
+      } else {
+        const usernameStr = cur.username ? `@${cur.username}` : '—';
+        details.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+            <div>
+              <div style="font-size: 11px; color: var(--hint);">Сменщик</div>
+              <div style="font-size: 15px; font-weight: 700; color: #fff;">${escapeHtml(cur.worker_name || '—')}</div>
+              <div style="font-size: 12px; color: var(--accent);">${escapeHtml(usernameStr)}</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--hint);">Карта Mono</div>
+              <div style="font-family: monospace; font-size: 13px; font-weight: 600;">${escapeHtml(cur.mono_card || '—')}</div>
+              <div style="font-size: 11px; color: var(--hint); margin-top: 2px;">TON: <span style="font-family: monospace;">${escapeHtml(cur.ton_address ? cur.ton_address.slice(0, 10) + '...' + cur.ton_address.slice(-6) : '—')}</span></div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: var(--hint);">Начало смены</div>
+              <div style="font-size: 13px; font-weight: 600;">${escapeHtml(cur.started_at || '—')}</div>
+              <div style="font-size: 11px; color: var(--hint);">Кем открыта: ${escapeHtml(cur.started_by || 'Admin')}</div>
+            </div>
+          </div>
+          <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; font-size: 12px;">
+            <div><span style="color:var(--hint);">Заказов:</span> <strong>${m.total_orders || 0}</strong></div>
+            <div><span style="color:var(--hint);">Подтверждено:</span> <strong style="color:#4ade80;">${m.confirmed_count || 0}</strong></div>
+            <div><span style="color:var(--hint);">Выручка UAH:</span> <strong style="color:#fbbf24;">${(m.revenue_uah || 0).toFixed(2)} ₴</strong></div>
+            <div><span style="color:var(--hint);">Выручка TON:</span> <strong style="color:#38bdf8;">${(m.revenue_ton || 0).toFixed(4)} TON</strong></div>
+            <div><span style="color:var(--hint);">Stars продано:</span> <strong style="color:#fbbf24;">${m.stars_sold || 0} ⭐</strong></div>
+          </div>
+        `;
+      }
+    }
+
+    if (list) {
+      const workers = data.workers || [];
+      if (!workers.length) {
+        list.innerHTML = '<div class="empty-state">Список сменщиков пуст</div>';
+      } else {
+        const curId = cur ? String(cur.worker_id) : null;
+        list.innerHTML = workers.map(w => {
+          const isCur = String(w.id) === curId;
+          const badgeHtml = isCur
+            ? '<span style="background: rgba(74,222,128,0.2); color: #4ade80; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;">🟢 НА СМЕНЕ</span>'
+            : (w.is_active ? '<span style="color:var(--hint); font-size: 11px;">активен</span>' : '<span style="color:#ef4444; font-size: 11px;">отключен</span>');
+          const tgStr = w.username ? `@${w.username}` : (w.telegram_id ? `ID: ${w.telegram_id}` : 'без TG');
+          return `
+            <div class="cardish" style="padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-weight: 600; font-size: 14px;">${escapeHtml(w.name)} ${badgeHtml}</div>
+                <div style="font-size: 12px; color: var(--hint); margin-top: 2px;">
+                  📱 ${escapeHtml(tgStr)} | 💳 <span style="font-family: monospace;">${escapeHtml(w.mono_card || '—')}</span>
+                </div>
+                ${w.notes ? `<div style="font-size: 11px; color: var(--hint); font-style: italic;">${escapeHtml(w.notes)}</div>` : ''}
+              </div>
+              <div>
+                ${!isCur ? `<button class="ghost small" onclick="handleAdminShiftStartWorker('${escapeHtml(w.id)}')">Начать смену</button>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch (err) {
+    console.error('loadAdminShiftsState error:', err);
+    if (badge) badge.textContent = 'Ошибка';
+    toast(err.message || 'Ошибка загрузки смен', 'error');
+  }
+}
+
+async function handleAdminShiftTakeSelf() {
+  const profile = state.bootstrap?.profile || {};
+  const actorName = profile.username ? `@${profile.username}` : (profile.first_name || 'Admin');
+  try {
+    const res = await api('/api/admin/shifts/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        worker_id: adminShiftsCachedState?.workers?.[0]?.id || 'worker_1',
+        actor_name: actorName,
+        init_data: state.initData || 'desktop'
+      })
+    });
+    if (res.ok) {
+      toast('Смена успешно активирована!', 'success');
+      loadAdminShiftsState();
+    }
+  } catch (err) {
+    toast(err.message || 'Ошибка при взятии смены', 'error');
+  }
+}
+
+async function handleAdminShiftStartWorker(workerId) {
+  const profile = state.bootstrap?.profile || {};
+  const actorName = profile.username ? `@${profile.username}` : (profile.first_name || 'Admin');
+  try {
+    const res = await api('/api/admin/shifts/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        worker_id: workerId,
+        actor_name: actorName,
+        init_data: state.initData || 'desktop'
+      })
+    });
+    if (res.ok) {
+      toast(`Смена переключена на: ${res.shift?.worker_name || 'сменщика'}!`, 'success');
+      loadAdminShiftsState();
+    }
+  } catch (err) {
+    toast(err.message || 'Ошибка при переключении смены', 'error');
+  }
+}
+
+function openShiftTransferModal() {
+  const modal = document.getElementById('shiftTransferModal');
+  const container = document.getElementById('shiftTransferWorkersOptions');
+  if (!modal || !container) return;
+  const workers = adminShiftsCachedState?.workers || [];
+  const curId = adminShiftsCachedState?.current_shift?.worker_id;
+  const otherWorkers = workers.filter(w => String(w.id) !== String(curId) && w.is_active);
+
+  if (!otherWorkers.length) {
+    container.innerHTML = '<div style="color:var(--hint); padding: 10px 0;">Нет других активных сменщиков.</div>';
+  } else {
+    container.innerHTML = otherWorkers.map(w => `
+      <button type="button" class="cardish" style="text-align: left; padding: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); cursor: pointer;" onclick="handleAdminShiftTransfer('${escapeHtml(w.id)}')">
+        <div style="font-weight: 600; font-size: 14px; color: #fff;">${escapeHtml(w.name)}</div>
+        <div style="font-size: 12px; color: var(--hint); margin-top: 2px;">💳 Mono: ${escapeHtml(w.mono_card || '—')}</div>
+      </button>
+    `).join('');
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeShiftTransferModal() {
+  document.getElementById('shiftTransferModal')?.classList.add('hidden');
+}
+
+async function handleAdminShiftTransfer(workerId) {
+  closeShiftTransferModal();
+  const profile = state.bootstrap?.profile || {};
+  const actorName = profile.username ? `@${profile.username}` : (profile.first_name || 'Admin');
+  try {
+    const res = await api('/api/admin/shifts/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        worker_id: workerId,
+        actor_name: actorName,
+        init_data: state.initData || 'desktop'
+      })
+    });
+    if (res.ok) {
+      toast(`Смена успешно передана: ${res.shift?.worker_name || 'новому сменщику'}!`, 'success');
+      loadAdminShiftsState();
+    }
+  } catch (err) {
+    toast(err.message || 'Ошибка при передаче смены', 'error');
+  }
+}
+
+async function handleAdminGenerateXReport() {
+  const profile = state.bootstrap?.profile || {};
+  const actorName = profile.username ? `@${profile.username}` : (profile.first_name || 'Admin');
+  try {
+    const res = await api('/api/admin/shifts/x-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actor_name: actorName,
+        init_data: state.initData || 'desktop'
+      })
+    });
+    if (res.ok && res.report) {
+      showReportModal(res.report, false);
+      toast('X-отчет успешно сформирован!', 'success');
+    }
+  } catch (err) {
+    toast(err.message || 'Ошибка при снятии X-отчета', 'error');
+  }
+}
+
+async function handleAdminCloseShift() {
+  if (!confirm('Вы действительно хотите завершить текущую смену?\nБудет снят и зафиксирован финальный Z-отчет.')) return;
+  const profile = state.bootstrap?.profile || {};
+  const actorName = profile.username ? `@${profile.username}` : (profile.first_name || 'Admin');
+  try {
+    const res = await api('/api/admin/shifts/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actor_name: actorName,
+        init_data: state.initData || 'desktop'
+      })
+    });
+    if (res.ok) {
+      toast('Смена успешно закрыта!', 'success');
+      if (res.z_report) {
+        showReportModal(res.z_report, true);
+      }
+      loadAdminShiftsState();
+    }
+  } catch (err) {
+    toast(err.message || 'Ошибка при закрытии смены', 'error');
+  }
+}
+
+function showReportModal(report, isClosing) {
+  const modal = document.getElementById('xReportModal');
+  const title = document.getElementById('xReportModalTitle');
+  const content = document.getElementById('xReportContent');
+  if (!modal || !content) return;
+
+  if (title) {
+    title.textContent = isClosing ? '🧾 Z-ОТЧЕТ (ЗАКРЫТИЕ СМЕНЫ)' : '📑 X-ОТЧЕТ (ПРОМЕЖУТОЧНЫЙ)';
+  }
+
+  const m = report.metrics || {};
+  const bd = m.breakdown || {};
+  const text = [
+    `ОТЧЕТ: ${report.report_id || '—'}`,
+    `Сменщик: ${report.worker_name || '—'}`,
+    `Карта Mono: ${report.mono_card || '—'}`,
+    `TON адрес: ${report.ton_address || '—'}`,
+    `Период: ${report.period_start || '—'} — ${report.period_end || '—'}`,
+    `Снял: ${report.generated_by || 'Admin'}`,
+    `--------------------------------------`,
+    `ИТОГИ:`,
+    `  • Всего заявок: ${m.total_orders || 0}`,
+    `  • Подтверждено: ${m.confirmed_count || 0}`,
+    `  • Отклонено: ${m.rejected_count || 0}`,
+    `  • В обработке: ${m.pending_count || 0}`,
+    ``,
+    `ФИНАНСЫ:`,
+    `  • Выручка (UAH): ${(m.revenue_uah || 0).toFixed(2)} ₴`,
+    `  • Выручка (TON): ${(m.revenue_ton || 0).toFixed(4)} TON`,
+    `  • Выплаты (UAH): ${(m.payouts_uah || 0).toFixed(2)} ₴`,
+    `  • Выплаты (TON): ${(m.payouts_ton || 0).toFixed(4)} TON`,
+    `  • Чистый итог (UAH): ${(m.net_uah || 0).toFixed(2)} ₴`,
+    `  • Чистый итог (TON): ${(m.net_ton || 0).toFixed(4)} TON`,
+    ``,
+    `ПРОДАЖИ:`,
+    `  • Stars выдано: ${m.stars_sold || 0} ⭐`,
+    `  • Заказов Stars: ${bd.stars_orders || 0}`,
+    `  • Telegram Premium: ${bd.premium_orders || 0}`,
+    `  • Пополнений TON: ${bd.ton_topup_orders || 0}`,
+  ].join('\n');
+
+  content.textContent = text;
+  modal.classList.remove('hidden');
+}
+
+function closeXReportModal() {
+  document.getElementById('xReportModal')?.classList.add('hidden');
+}
+
+window.loadAdminShiftsState = loadAdminShiftsState;
+window.handleAdminShiftTakeSelf = handleAdminShiftTakeSelf;
+window.handleAdminShiftStartWorker = handleAdminShiftStartWorker;
+window.openShiftTransferModal = openShiftTransferModal;
+window.closeShiftTransferModal = closeShiftTransferModal;
+window.handleAdminShiftTransfer = handleAdminShiftTransfer;
+window.handleAdminGenerateXReport = handleAdminGenerateXReport;
+window.handleAdminCloseShift = handleAdminCloseShift;
+window.closeXReportModal = closeXReportModal;
 
 renderCaseConfigurations();
 renderInventory();

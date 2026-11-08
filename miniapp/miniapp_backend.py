@@ -33,7 +33,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from config import (
     ADMIN_CHAT_ID,
@@ -57,6 +57,12 @@ from database import db
 from config import GAMES_SETTINGS
 from .miniapp_auth import MiniAppAuthError, TelegramMiniAppUser, validate_init_data
 from .telegram_api import download_telegram_file, send_message, send_photo, send_photo_url, send_photo_bytes
+from utils.cases import (
+    CASE_DEFINITIONS,
+    get_case_chances,
+    get_case_items,
+    set_case_chances,
+)
 from utils.helpers import add_star_balance, add_ton_balance, sub_star_balance, sub_ton_balance
 from utils.pricing import (
     get_premium_prices,
@@ -76,6 +82,24 @@ from utils.tournaments import (
     end_tournament,
     get_all_tournaments_summary,
     record_game_event,
+)
+from utils.shifts import (
+    add_worker,
+    compute_shift_metrics,
+    delete_worker,
+    end_shift,
+    format_shift_status_text,
+    format_x_report_text,
+    generate_x_report,
+    get_active_payment_details,
+    get_current_shift,
+    get_worker_by_id,
+    get_workers,
+    load_shifts_data,
+    save_shifts_data,
+    start_shift,
+    transfer_shift,
+    update_worker,
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -266,7 +290,20 @@ def _set_nft_case_chances(values: dict[str, float]) -> dict[str, float]:
     return normalized
 
 
-def _resolve_case_gift_chance(item: dict) -> float:
+def _resolve_case_gift_chance(item: dict, tier: str | None = None) -> float:
+    active_tier = tier or item.get('_tier')
+    if active_tier:
+        custom_tier = get_case_chances(active_tier)
+        item_id = item.get('id')
+        if item_id and item_id in custom_tier:
+            return float(custom_tier[item_id])
+        model = str(item.get('model') or '').strip().lower()
+        if model and model in custom_tier:
+            return float(custom_tier[model])
+        label = str(item.get('label') or '').strip().lower()
+        if label and label in custom_tier:
+            return float(custom_tier[label])
+
     model = str(item.get('model') or '').strip().lower()
     chances = _get_nft_case_chances()
     if model in chances:
@@ -278,49 +315,49 @@ def _resolve_case_gift_chance(item: dict) -> float:
 
 
 CASE150_DROP_TABLE = [
-    {'kind': 'stars', 'label': '25 звёзд', 'name': '25 звёзд', 'model': None, 'value': 25, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 73.86, 'weight': 7386},
-    {'kind': 'gift', 'label': 'Lush Bouquet', 'name': 'Lush Bouquet', 'model': 'lush-bouquet', 'value': NFT_MODEL_DEFAULT_STARS['lush-bouquet'], 'icon': '💐', 'rarity': 'rare', 'chance_percent': 4.0, 'weight': 400},
-    {'kind': 'gift', 'label': 'Pool Float', 'name': 'Pool Float', 'model': 'pool-float', 'value': NFT_MODEL_DEFAULT_STARS['pool-float'], 'icon': '🦒', 'rarity': 'common', 'chance_percent': 4.0, 'weight': 400},
-    {'kind': 'gift', 'label': 'Instant Ramen', 'name': 'Instant Ramen', 'model': 'instant-ramen', 'value': NFT_MODEL_DEFAULT_STARS['instant-ramen'], 'icon': '🍜', 'rarity': 'common', 'chance_percent': 5.0, 'weight': 500},
-    {'kind': 'gift', 'label': 'Ice Cream', 'name': 'Ice Cream', 'model': 'ice-cream', 'value': NFT_MODEL_DEFAULT_STARS['ice-cream'], 'icon': '🍦', 'rarity': 'common', 'chance_percent': 5.64, 'weight': 564},
-    {'kind': 'gift', 'label': 'UFC Strike', 'name': 'UFC Strike', 'model': 'ufc-box', 'value': NFT_MODEL_DEFAULT_STARS['ufc-box'], 'icon': '🥊', 'rarity': 'epic', 'chance_percent': 3.0, 'weight': 300},
-    {'kind': 'gift', 'label': 'Stellar Rocket', 'name': 'Stellar Rocket', 'model': 'stellar-rocket', 'value': NFT_MODEL_DEFAULT_STARS['stellar-rocket'], 'icon': '🚀', 'rarity': 'rare', 'chance_percent': 2.0, 'weight': 200},
-    {'kind': 'gift', 'label': 'Jester Hat', 'name': 'Jester Hat', 'model': 'chester-hat', 'value': NFT_MODEL_DEFAULT_STARS['chester-hat'], 'icon': '🎩', 'rarity': 'common', 'chance_percent': 2.5, 'weight': 250},
+    {'id': 'stars_25', 'kind': 'stars', 'label': '25 звёзд', 'name': '25 звёзд', 'model': None, 'value': 25, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 73.86, 'weight': 7386},
+    {'id': 'lush-bouquet', 'kind': 'gift', 'label': 'Lush Bouquet', 'name': 'Lush Bouquet', 'model': 'lush-bouquet', 'value': NFT_MODEL_DEFAULT_STARS['lush-bouquet'], 'icon': '💐', 'rarity': 'rare', 'chance_percent': 4.0, 'weight': 400},
+    {'id': 'pool-float', 'kind': 'gift', 'label': 'Pool Float', 'name': 'Pool Float', 'model': 'pool-float', 'value': NFT_MODEL_DEFAULT_STARS['pool-float'], 'icon': '🦒', 'rarity': 'common', 'chance_percent': 4.0, 'weight': 400},
+    {'id': 'instant-ramen', 'kind': 'gift', 'label': 'Instant Ramen', 'name': 'Instant Ramen', 'model': 'instant-ramen', 'value': NFT_MODEL_DEFAULT_STARS['instant-ramen'], 'icon': '🍜', 'rarity': 'common', 'chance_percent': 5.0, 'weight': 500},
+    {'id': 'ice-cream', 'kind': 'gift', 'label': 'Ice Cream', 'name': 'Ice Cream', 'model': 'ice-cream', 'value': NFT_MODEL_DEFAULT_STARS['ice-cream'], 'icon': '🍦', 'rarity': 'common', 'chance_percent': 5.64, 'weight': 564},
+    {'id': 'ufc-box', 'kind': 'gift', 'label': 'UFC Strike', 'name': 'UFC Strike', 'model': 'ufc-box', 'value': NFT_MODEL_DEFAULT_STARS['ufc-box'], 'icon': '🥊', 'rarity': 'epic', 'chance_percent': 3.0, 'weight': 300},
+    {'id': 'stellar-rocket', 'kind': 'gift', 'label': 'Stellar Rocket', 'name': 'Stellar Rocket', 'model': 'stellar-rocket', 'value': NFT_MODEL_DEFAULT_STARS['stellar-rocket'], 'icon': '🚀', 'rarity': 'rare', 'chance_percent': 2.0, 'weight': 200},
+    {'id': 'chester-hat', 'kind': 'gift', 'label': 'Jester Hat', 'name': 'Jester Hat', 'model': 'chester-hat', 'value': NFT_MODEL_DEFAULT_STARS['chester-hat'], 'icon': '🎩', 'rarity': 'common', 'chance_percent': 2.5, 'weight': 250},
 ]
 
 CASE600_DROP_TABLE = [
-    {'kind': 'stars', 'label': '200 звёзд', 'name': '200 звёзд', 'model': None, 'value': 200, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 33.85},
-    {'kind': 'gift', 'label': 'Ginger Cookie', 'name': 'Ginger Cookie', 'model': 'ginger-cookie', 'value': NFT_MODEL_DEFAULT_STARS['ginger-cookie'], 'icon': '🍪', 'rarity': 'common', 'chance_percent': 18.0},
-    {'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 15.0},
-    {'kind': 'gift', 'label': 'Bunny Muffin', 'name': 'Bunny Muffin', 'model': 'bunny-mafin', 'value': NFT_MODEL_DEFAULT_STARS['bunny-mafin'], 'icon': '🐰', 'rarity': 'rare', 'chance_percent': 16.0},
-    {'kind': 'gift', 'label': 'Crystal Ball', 'name': 'Crystal Ball', 'model': 'crystal-ball', 'value': NFT_MODEL_DEFAULT_STARS['crystal-ball'], 'icon': '🔮', 'rarity': 'epic', 'chance_percent': 11.0},
-    {'kind': 'gift', 'label': 'Eternal Rose', 'name': 'Eternal Rose', 'model': 'eternal-rose', 'value': NFT_MODEL_DEFAULT_STARS['eternal-rose'], 'icon': '🌹', 'rarity': 'legendary', 'chance_percent': 6.1},
-    {'kind': 'gift', 'label': 'Magic Potion', 'name': 'Magic Potion', 'model': 'magic-potion', 'value': NFT_MODEL_DEFAULT_STARS['magic-potion'], 'icon': '🧪', 'rarity': 'mythic', 'chance_percent': 0.05},
-    {'kind': 'gift', 'label': 'Astral Shard', 'name': 'Astral Shard', 'model': 'astral-shard', 'value': NFT_MODEL_DEFAULT_STARS['astral-shard'], 'icon': '✨', 'rarity': 'mythic', 'chance_percent': 0.0},
+    {'id': 'stars_200', 'kind': 'stars', 'label': '200 звёзд', 'name': '200 звёзд', 'model': None, 'value': 200, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 33.85},
+    {'id': 'ginger-cookie', 'kind': 'gift', 'label': 'Ginger Cookie', 'name': 'Ginger Cookie', 'model': 'ginger-cookie', 'value': NFT_MODEL_DEFAULT_STARS['ginger-cookie'], 'icon': '🍪', 'rarity': 'common', 'chance_percent': 18.0},
+    {'id': 'liberty-figure', 'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 15.0},
+    {'id': 'bunny-mafin', 'kind': 'gift', 'label': 'Bunny Muffin', 'name': 'Bunny Muffin', 'model': 'bunny-mafin', 'value': NFT_MODEL_DEFAULT_STARS['bunny-mafin'], 'icon': '🐰', 'rarity': 'rare', 'chance_percent': 16.0},
+    {'id': 'crystal-ball', 'kind': 'gift', 'label': 'Crystal Ball', 'name': 'Crystal Ball', 'model': 'crystal-ball', 'value': NFT_MODEL_DEFAULT_STARS['crystal-ball'], 'icon': '🔮', 'rarity': 'epic', 'chance_percent': 11.0},
+    {'id': 'eternal-rose', 'kind': 'gift', 'label': 'Eternal Rose', 'name': 'Eternal Rose', 'model': 'eternal-rose', 'value': NFT_MODEL_DEFAULT_STARS['eternal-rose'], 'icon': '🌹', 'rarity': 'legendary', 'chance_percent': 6.1},
+    {'id': 'magic-potion', 'kind': 'gift', 'label': 'Magic Potion', 'name': 'Magic Potion', 'model': 'magic-potion', 'value': NFT_MODEL_DEFAULT_STARS['magic-potion'], 'icon': '🧪', 'rarity': 'mythic', 'chance_percent': 0.05},
+    {'id': 'astral-shard', 'kind': 'gift', 'label': 'Astral Shard', 'name': 'Astral Shard', 'model': 'astral-shard', 'value': NFT_MODEL_DEFAULT_STARS['astral-shard'], 'icon': '✨', 'rarity': 'mythic', 'chance_percent': 0.0},
 ]
 
 CASE400_DROP_TABLE = [
-    {'kind': 'stars', 'label': '50 звёзд', 'name': '50 звёзд', 'model': None, 'value': 50, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 25.1},
-    {'kind': 'stars', 'label': '100 звёзд', 'name': '100 звёзд', 'model': None, 'value': 100, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 25.1},
-    {'kind': 'gift', 'label': 'Candy Cane', 'name': 'Candy Cane', 'model': 'candy-cane', 'value': NFT_MODEL_DEFAULT_STARS['candy-cane'], 'icon': '🍬', 'rarity': 'common', 'chance_percent': 14.9},
-    {'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 16.3},
-    {'kind': 'gift', 'label': 'Love Candle', 'name': 'Love Candle', 'model': 'love-candle', 'value': NFT_MODEL_DEFAULT_STARS['love-candle'], 'icon': '🕯️', 'rarity': 'rare', 'chance_percent': 8.2},
-    {'kind': 'gift', 'label': 'Crystal Ball', 'name': 'Crystal Ball', 'model': 'crystal-ball', 'value': NFT_MODEL_DEFAULT_STARS['crystal-ball'], 'icon': '🔮', 'rarity': 'epic', 'chance_percent': 5.3},
-    {'kind': 'gift', 'label': 'Flying Broom', 'name': 'Flying Broom', 'model': 'flying-broom', 'value': NFT_MODEL_DEFAULT_STARS['flying-broom'], 'icon': '🧹', 'rarity': 'rare', 'chance_percent': 4.9},
-    {'kind': 'gift', 'label': 'Genie Lamp', 'name': 'Genie Lamp', 'model': 'genie-lamp', 'value': NFT_MODEL_DEFAULT_STARS['genie-lamp'], 'icon': '🪔', 'rarity': 'legendary', 'chance_percent': 0.2},
-    {'kind': 'gift', 'label': 'Loot Bag', 'name': 'Loot Bag', 'model': 'loot-bag', 'value': NFT_MODEL_DEFAULT_STARS['loot-bag'], 'icon': '👜', 'rarity': 'mythic', 'chance_percent': 0.0},
+    {'id': 'stars_50', 'kind': 'stars', 'label': '50 звёзд', 'name': '50 звёзд', 'model': None, 'value': 50, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 25.1},
+    {'id': 'stars_100', 'kind': 'stars', 'label': '100 звёзд', 'name': '100 звёзд', 'model': None, 'value': 100, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 25.1},
+    {'id': 'candy-cane', 'kind': 'gift', 'label': 'Candy Cane', 'name': 'Candy Cane', 'model': 'candy-cane', 'value': NFT_MODEL_DEFAULT_STARS['candy-cane'], 'icon': '🍬', 'rarity': 'common', 'chance_percent': 14.9},
+    {'id': 'liberty-figure', 'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 16.3},
+    {'id': 'love-candle', 'kind': 'gift', 'label': 'Love Candle', 'name': 'Love Candle', 'model': 'love-candle', 'value': NFT_MODEL_DEFAULT_STARS['love-candle'], 'icon': '🕯️', 'rarity': 'rare', 'chance_percent': 8.2},
+    {'id': 'crystal-ball', 'kind': 'gift', 'label': 'Crystal Ball', 'name': 'Crystal Ball', 'model': 'crystal-ball', 'value': NFT_MODEL_DEFAULT_STARS['crystal-ball'], 'icon': '🔮', 'rarity': 'epic', 'chance_percent': 5.3},
+    {'id': 'flying-broom', 'kind': 'gift', 'label': 'Flying Broom', 'name': 'Flying Broom', 'model': 'flying-broom', 'value': NFT_MODEL_DEFAULT_STARS['flying-broom'], 'icon': '🧹', 'rarity': 'rare', 'chance_percent': 4.9},
+    {'id': 'genie-lamp', 'kind': 'gift', 'label': 'Genie Lamp', 'name': 'Genie Lamp', 'model': 'genie-lamp', 'value': NFT_MODEL_DEFAULT_STARS['genie-lamp'], 'icon': '🪔', 'rarity': 'legendary', 'chance_percent': 0.2},
+    {'id': 'loot-bag', 'kind': 'gift', 'label': 'Loot Bag', 'name': 'Loot Bag', 'model': 'loot-bag', 'value': NFT_MODEL_DEFAULT_STARS['loot-bag'], 'icon': '👜', 'rarity': 'mythic', 'chance_percent': 0.0},
 ]
 
 CASE250_DROP_TABLE = [
-    {'kind': 'stars', 'label': '25 звёзд', 'name': '25 звёзд', 'model': None, 'value': 25, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 43.79},
-    {'kind': 'stars', 'label': '75 звёзд', 'name': '75 звёзд', 'model': None, 'value': 75, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 43.79},
-    {'kind': 'gift', 'label': 'Ice Cream', 'name': 'Ice Cream', 'model': 'ice-cream', 'value': NFT_MODEL_DEFAULT_STARS['ice-cream'], 'icon': '🍦', 'rarity': 'common', 'chance_percent': 2.9},
-    {'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 2.7},
-    {'kind': 'gift', 'label': 'Desk Calendar', 'name': 'Desk Calendar', 'model': 'desk-calendar', 'value': NFT_MODEL_DEFAULT_STARS['desk-calendar'], 'icon': '📅', 'rarity': 'common', 'chance_percent': 2.1},
-    {'kind': 'gift', 'label': 'Big Year', 'name': 'Big Year', 'model': 'big-year', 'value': NFT_MODEL_DEFAULT_STARS['big-year'], 'icon': '🗓️', 'rarity': 'common', 'chance_percent': 3.2},
-    {'kind': 'gift', 'label': 'Berry Box', 'name': 'Berry Box', 'model': 'berry-box', 'value': NFT_MODEL_DEFAULT_STARS['berry-box'], 'icon': '🫐', 'rarity': 'rare', 'chance_percent': 1.5},
-    {'kind': 'gift', 'label': 'Eternal Rose', 'name': 'Eternal Rose', 'model': 'eternal-rose', 'value': NFT_MODEL_DEFAULT_STARS['eternal-rose'], 'icon': '🌹', 'rarity': 'legendary', 'chance_percent': 0.01},
-    {'kind': 'gift', 'label': 'Bonded Ring', 'name': 'Bonded Ring', 'model': 'bonded-rind', 'value': NFT_MODEL_DEFAULT_STARS['bonded-rind'], 'icon': '🧩', 'rarity': 'legendary', 'chance_percent': 0.01},
+    {'id': 'stars_25', 'kind': 'stars', 'label': '25 звёзд', 'name': '25 звёзд', 'model': None, 'value': 25, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 43.79},
+    {'id': 'stars_75', 'kind': 'stars', 'label': '75 звёзд', 'name': '75 звёзд', 'model': None, 'value': 75, 'icon': '⭐', 'rarity': 'common', 'chance_percent': 43.79},
+    {'id': 'ice-cream', 'kind': 'gift', 'label': 'Ice Cream', 'name': 'Ice Cream', 'model': 'ice-cream', 'value': NFT_MODEL_DEFAULT_STARS['ice-cream'], 'icon': '🍦', 'rarity': 'common', 'chance_percent': 2.9},
+    {'id': 'liberty-figure', 'kind': 'gift', 'label': 'Liberty Figure', 'name': 'Liberty Figure', 'model': 'liberty-figure', 'value': NFT_MODEL_DEFAULT_STARS['liberty-figure'], 'icon': '🗽', 'rarity': 'common', 'chance_percent': 2.7},
+    {'id': 'desk-calendar', 'kind': 'gift', 'label': 'Desk Calendar', 'name': 'Desk Calendar', 'model': 'desk-calendar', 'value': NFT_MODEL_DEFAULT_STARS['desk-calendar'], 'icon': '📅', 'rarity': 'common', 'chance_percent': 2.1},
+    {'id': 'big-year', 'kind': 'gift', 'label': 'Big Year', 'name': 'Big Year', 'model': 'big-year', 'value': NFT_MODEL_DEFAULT_STARS['big-year'], 'icon': '🗓️', 'rarity': 'common', 'chance_percent': 3.2},
+    {'id': 'berry-box', 'kind': 'gift', 'label': 'Berry Box', 'name': 'Berry Box', 'model': 'berry-box', 'value': NFT_MODEL_DEFAULT_STARS['berry-box'], 'icon': '🫐', 'rarity': 'rare', 'chance_percent': 1.5},
+    {'id': 'eternal-rose', 'kind': 'gift', 'label': 'Eternal Rose', 'name': 'Eternal Rose', 'model': 'eternal-rose', 'value': NFT_MODEL_DEFAULT_STARS['eternal-rose'], 'icon': '🌹', 'rarity': 'legendary', 'chance_percent': 0.01},
+    {'id': 'bonded-rind', 'kind': 'gift', 'label': 'Bonded Ring', 'name': 'Bonded Ring', 'model': 'bonded-rind', 'value': NFT_MODEL_DEFAULT_STARS['bonded-rind'], 'icon': '🧩', 'rarity': 'legendary', 'chance_percent': 0.01},
 ]
 
 for _drop_table in (CASE150_DROP_TABLE, CASE250_DROP_TABLE, CASE400_DROP_TABLE, CASE600_DROP_TABLE):
@@ -909,28 +946,36 @@ def _set_nft_case_chances(chances: dict[str, float]) -> dict[str, float]:
     return normalized
 
 
-def _resolve_case_gift_chance(item: dict) -> float:
-    """Resolve the effective drop chance for a case gift, checking admin overrides first."""
+def _resolve_case_gift_chance(item: dict, tier: str | None = None) -> float:
+    """Resolve the effective drop chance for a case prize, checking tier overrides and admin overrides."""
     if not isinstance(item, dict):
         return 0.0
-    
+
+    active_tier = tier or item.get('_tier')
+    if active_tier:
+        custom_tier = get_case_chances(active_tier)
+        item_id = item.get('id')
+        if item_id and item_id in custom_tier:
+            return float(custom_tier[item_id])
+        model = str(item.get('model') or '').strip().lower()
+        if model and model in custom_tier:
+            return float(custom_tier[model])
+        label = str(item.get('label') or '').strip().lower()
+        if label and label in custom_tier:
+            return float(custom_tier[label])
+
     model = str(item.get('model') or '').strip().lower()
-    if not model:
-        # No model, use explicit chance
-        return max(0.0, float(item.get('chance_percent', item.get('weight', 0) or 0) or 0))
-    
-    # Check admin-managed chances first
-    admin_chances = _get_nft_case_chances()
-    if model in admin_chances:
-        chance = float(admin_chances[model])
-        if chance >= 0:
-            return chance
-    
-    # Fall back to explicit chance_percent field
+    if model:
+        admin_chances = _get_nft_case_chances()
+        if model in admin_chances:
+            chance = float(admin_chances[model])
+            if chance >= 0:
+                return chance
+
     chance = max(0.0, float(item.get('chance_percent', item.get('weight', 0) or 0) or 0))
     if chance <= 0 and item.get('weight') is not None:
         chance = max(0.0, float(int(item.get('weight', 0) or 0)) / 100.0)
-    return chance
+    return max(0.0, chance)
 
 
 def _resolve_nft_model_price(model: str) -> dict:
@@ -1573,6 +1618,12 @@ class AdminNftCaseChancesIn(BaseModel):
     chances: dict
 
 
+class AdminCaseChancesIn(BaseModel):
+    init_data: str
+    tier: str | None = None
+    chances: dict = Field(default_factory=dict)
+
+
 class AdminNftImagesIn(BaseModel):
     init_data: str
     images: dict
@@ -1813,7 +1864,12 @@ def _require_admin(init_data: str | None = 'desktop', request: Request | None = 
         )
         return user, db.users.get(str(admin_id), {})
 
-    init_str = (init_data or '').strip()
+    init_str = ''
+    if request:
+        init_str = _extract_init_data(request, init_data if init_data not in {'desktop', 'demo'} else None)
+    if not init_str:
+        init_str = (init_data or '').strip()
+
     if not init_str or init_str in {'desktop', 'demo'}:
         _error(401, 'Требуется авторизация администратора')
 
@@ -2097,13 +2153,16 @@ def _serialize_bootstrap(tg_user, user_data) -> dict:
             'nft_gift_prices': _get_nft_manual_prices(),
             'nft_gift_images': _get_nft_manual_images(),
             'nft_case_chances': _get_nft_case_chances(),
+            'case_chances': get_case_chances(),
+            'case_definitions': CASE_DEFINITIONS,
             'game_rtp_percent': _get_game_rtp_settings(),
             'ton_market': ton_pricing,
             'nft_catalog': _get_nft_shop_catalog(),
         },
         'constants': {
-            'mono_card': MONO,
-            'ton_address': TON,
+            'mono_card': get_active_payment_details()['mono_card'],
+            'ton_address': get_active_payment_details()['ton_address'],
+            'active_shift': get_active_payment_details(),
             'support_username': SUPPORT_USERNAME,
             'premium_seller_username': PREMIUM_SELLER_USERNAME,
             'reviews_channel': REVIEWS_CHANNEL,
@@ -2142,6 +2201,10 @@ def _find_user_id_by_username(username: str | None) -> int | None:
 def _create_transaction(payload: dict) -> dict:
     db.refresh()
     transaction = {'id': db.transaction_id_counter, **payload, 'date': datetime.now().strftime('%d.%m.%Y %H:%M'), 'source': 'app'}
+    active_pay = get_active_payment_details()
+    if active_pay.get('shift_active'):
+        transaction.setdefault('shift_id', active_pay.get('shift_id'))
+        transaction.setdefault('shift_worker', active_pay.get('worker_name'))
     db.transactions.append(transaction)
     db.transaction_id_counter += 1
     db.save_data()
@@ -2157,6 +2220,7 @@ def _ton_amount_for_uah(amount_uah: float) -> float:
 
 def _build_stars_instructions(stars: int, price: float, payment_method: str, target_username: str | None) -> dict:
     ton_amount = _ton_amount_for_uah(price)
+    active_pay = get_active_payment_details()
     result = {
         'stars': stars,
         'price_uah': round(price, 2),
@@ -2165,9 +2229,9 @@ def _build_stars_instructions(stars: int, price: float, payment_method: str, tar
         'upload_required': payment_method in {'mono', 'ton_wallet'},
     }
     if payment_method == 'mono':
-        result['payment_details'] = {'type': 'mono', 'amount_uah': round(price, 2), 'mono_card': MONO}
+        result['payment_details'] = {'type': 'mono', 'amount_uah': round(price, 2), 'mono_card': active_pay['mono_card']}
     elif payment_method == 'ton_wallet':
-        result['payment_details'] = {'type': 'ton_wallet', 'amount_ton': ton_amount, 'ton_address': TON}
+        result['payment_details'] = {'type': 'ton_wallet', 'amount_ton': ton_amount, 'ton_address': active_pay['ton_address']}
     return result
 
 
@@ -2215,6 +2279,7 @@ def _calculate_stars_order_price(stars: int) -> float:
 
 def _build_premium_instructions(months: int, price: float, payment_method: str) -> dict:
     ton_amount = _ton_amount_for_uah(price)
+    active_pay = get_active_payment_details()
     result = {
         'months': months,
         'price_uah': round(price, 2),
@@ -2222,9 +2287,9 @@ def _build_premium_instructions(months: int, price: float, payment_method: str) 
         'upload_required': payment_method in {'mono', 'ton_wallet'},
     }
     if payment_method == 'mono':
-        result['payment_details'] = {'type': 'mono', 'amount_uah': round(price, 2), 'mono_card': MONO}
+        result['payment_details'] = {'type': 'mono', 'amount_uah': round(price, 2), 'mono_card': active_pay['mono_card']}
     elif payment_method == 'ton_wallet':
-        result['payment_details'] = {'type': 'ton_wallet', 'amount_ton': ton_amount, 'ton_address': TON}
+        result['payment_details'] = {'type': 'ton_wallet', 'amount_ton': ton_amount, 'ton_address': active_pay['ton_address']}
     return result
 
 
@@ -2234,6 +2299,7 @@ def _build_ton_topup_preview(ton_amount: float, payment_method: str) -> dict:
         _error(503, 'Не удалось получить курс TON. Попробуйте позже.')
     ton_amount = round(float(pricing['ton_amount']), 4)
     base_total_uah = round(float(pricing['base_total_uah']), 2)
+    active_pay = get_active_payment_details()
     if payment_method == 'mono':
         fee_percent = 10.0 if ton_amount <= 5 else 7.0
         total_uah = round(base_total_uah * (1 + fee_percent / 100), 2)
@@ -2244,7 +2310,7 @@ def _build_ton_topup_preview(ton_amount: float, payment_method: str) -> dict:
             'payment_details': {
                 'type': 'mono',
                 'amount_uah': total_uah,
-                'mono_card': MONO,
+                'mono_card': active_pay['mono_card'],
                 'fee_percent': fee_percent,
                 'base_total_uah': base_total_uah,
             },
@@ -2256,7 +2322,7 @@ def _build_ton_topup_preview(ton_amount: float, payment_method: str) -> dict:
         'payment_details': {
             'type': 'ton_wallet',
             'amount_ton': ton_amount,
-            'ton_address': TON,
+            'ton_address': active_pay['ton_address'],
             'base_total_uah': base_total_uah,
         },
     }
@@ -2408,14 +2474,14 @@ def _build_case150_pool() -> list[dict]:
         if entry.get('kind') == 'gift':
             model = str(entry.get('model') or '').strip().lower()
             entry['value'] = int(prices.get(model, entry.get('value', 0) or 0))
-        chance = _resolve_case_gift_chance(entry)
+        chance = _resolve_case_gift_chance(entry, tier='case150')
         entry['chance_percent'] = round(chance, 4)
         entry['weight'] = max(1, int(round(chance * 100)))
         pool.append(entry)
     return pool
 
 
-def _build_special_case_pool(drop_table: list[dict], case_rtp_percent: float | None = None, case_cost: float | None = None) -> list[dict]:
+def _build_special_case_pool(drop_table: list[dict], case_rtp_percent: float | None = None, case_cost: float | None = None, tier: str | None = None) -> list[dict]:
     prices = _get_nft_manual_prices()
     pool: list[dict] = []
     rtp_percent = float(case_rtp_percent if case_rtp_percent is not None else 100.0)
@@ -2427,7 +2493,7 @@ def _build_special_case_pool(drop_table: list[dict], case_rtp_percent: float | N
         if entry.get('kind') == 'gift':
             model = str(entry.get('model') or '').strip().lower()
             entry['value'] = int(prices.get(model, entry.get('value', 0) or 0))
-        chance = _resolve_case_gift_chance(entry)
+        chance = _resolve_case_gift_chance(entry, tier=tier)
         entry['chance_percent'] = round(chance, 4)
         if entry.get('kind') == 'stars':
             base_weight = max(1.0, chance * 100.0 * rtp_factor)
@@ -2462,7 +2528,7 @@ def _open_special_case(user_data: dict, tier: str) -> dict:
         _error(400, 'Неверный тип кейса')
 
     _sub_balance_checked(user_data, 'stars', float(config['cost']))
-    pool = _build_special_case_pool(config['drop_table'], _get_game_rtp_percent(tier), float(config['cost']))
+    pool = _build_special_case_pool(config['drop_table'], _get_game_rtp_percent(tier), float(config['cost']), tier=tier)
     reward = _pick_weighted_reward(pool)
 
     if reward.get('kind') == 'stars':
@@ -2689,6 +2755,8 @@ def admin_dashboard(request: Request, init_data: str | None = None):
             'nft_gift_prices': _get_nft_manual_prices(),
             'nft_gift_images': _get_nft_manual_images(),
             'nft_case_chances': _get_nft_case_chances(),
+            'case_chances': get_case_chances(),
+            'case_definitions': CASE_DEFINITIONS,
             'game_rtp_percent': _get_game_rtp_settings(),
             'coin_game_settings': _get_coin_settings(),
         },
@@ -2765,6 +2833,36 @@ def admin_update_nft_case_chances(payload: AdminNftCaseChancesIn):
     chances = payload.chances if isinstance(payload.chances, dict) else {}
     updated = _set_nft_case_chances(chances)
     return {'ok': True, 'nft_case_chances': updated}
+
+
+@app.get('/api/admin/prices/case-chances')
+def admin_get_case_chances(init_data: str = 'desktop'):
+    _require_admin(init_data)
+    result_cases = []
+    for tier, cdef in CASE_DEFINITIONS.items():
+        result_cases.append({
+            'tier': tier,
+            'label': cdef['label'],
+            'cost': cdef['cost'],
+            'items': get_case_items(tier),
+        })
+    return {'ok': True, 'cases': result_cases, 'chances': get_case_chances()}
+
+
+@app.post('/api/admin/prices/case-chances')
+def admin_update_case_chances(payload: AdminCaseChancesIn):
+    _require_admin(payload.init_data)
+    tier = (payload.tier or '').strip()
+    if tier and tier in CASE_DEFINITIONS:
+        updated = set_case_chances(tier, payload.chances)
+        return {'ok': True, 'tier': tier, 'chances': updated}
+    elif isinstance(payload.chances, dict):
+        res = {}
+        for c_tier, c_chances in payload.chances.items():
+            if c_tier in CASE_DEFINITIONS and isinstance(c_chances, dict):
+                res[c_tier] = set_case_chances(c_tier, c_chances)
+        return {'ok': True, 'chances': get_case_chances()}
+    _error(400, 'Неверный формат запроса: укажите tier кейса или словарь по кейсам')
 
 
 class ShopNftBuyIn(BaseModel):
@@ -3568,11 +3666,13 @@ def admin_decide_transaction(payload: AdminTransactionDecisionIn):
             if not target_username:
                 add_star_balance(user_data, stars)
                 transaction['delivered_to_balance'] = True
+                db.save_data()
                 notification = f'✅ Оплата подтверждена. Начислено {stars} ⭐.'
             elif recipient_id:
                 recipient_data = register_user_if_needed(int(recipient_id))
                 add_star_balance(recipient_data, stars)
                 transaction['delivered_to_balance'] = True
+                db.save_data()
                 notification = f'✅ Оплата подтверждена. Для {target_username} начислено {stars} ⭐.'
                 try:
                     send_message(int(recipient_id), f'🎁 Вам купили {stars} ⭐.')
@@ -3580,21 +3680,26 @@ def admin_decide_transaction(payload: AdminTransactionDecisionIn):
                     pass
             else:
                 transaction['delivered_to_balance'] = False
+                db.save_data()
                 notification = f'✅ Оплата подтверждена. Заказ для {target_username} требует ручной выдачи.'
             if not transaction.get('referral_rewarded'):
                 transaction['referral_rewarded'] = True
                 reward_referrer_for_purchase(transaction['user_id'], 'stars', stars=stars)
+                db.save_data()
         elif transaction_type == 'ton_topup':
             amount = float(transaction.get('ton_amount', 0) or 0)
             if amount <= 0:
                 _error(400, 'В заявке указано некорректное количество TON')
             user_data['balance_ton'] = get_numeric_ton_balance(user_data) + amount
+            db.save_data()
             notification = f'✅ Оплата подтверждена. Начислено {format_stars(amount)} TON.'
         else:
             months = int(transaction.get('months', 0) or 0)
+            db.save_data()
             if not transaction.get('referral_rewarded'):
                 transaction['referral_rewarded'] = True
                 reward_referrer_for_purchase(transaction['user_id'], 'premium', months=months)
+                db.save_data()
             notification = (
                 f'✅ Premium на {months} мес. подтверждён. Свяжитесь с {PREMIUM_SELLER_USERNAME}.'
                 if months == 1 else '✅ Оплата Premium подтверждена. Ожидайте выдачу подписки.'
@@ -4039,6 +4144,174 @@ def admin_delete_tournament_endpoint(payload: AdminTournamentActionIn):
     if not res.get('ok'):
         _error(404, res.get('error', 'Не удалось удалить турнир'))
     return res
+
+
+class ShiftBaseModel(BaseModel):
+    @model_validator(mode='before')
+    @classmethod
+    def _parse_raw_if_string(cls, data):
+        if isinstance(data, (str, bytes)):
+            try:
+                return json.loads(data)
+            except Exception:
+                pass
+        return data
+
+
+class AdminShiftStartIn(ShiftBaseModel):
+    init_data: str = 'desktop'
+    worker_id: str
+    actor_name: str | None = None
+
+
+class AdminShiftTransferIn(ShiftBaseModel):
+    init_data: str = 'desktop'
+    worker_id: str
+    actor_name: str | None = None
+
+
+class AdminShiftActionIn(ShiftBaseModel):
+    init_data: str = 'desktop'
+    actor_name: str | None = None
+
+
+class AdminWorkerIn(ShiftBaseModel):
+    init_data: str = 'desktop'
+    id: str | None = None
+    name: str
+    telegram_id: int | str | None = None
+    username: str = ''
+    mono_card: str = ''
+    ton_address: str = ''
+    notes: str = ''
+    is_active: bool = True
+
+
+class AdminWorkerDeleteIn(ShiftBaseModel):
+    init_data: str = 'desktop'
+    worker_id: str
+
+
+@app.get('/api/admin/shifts/state')
+def admin_shifts_state(request: Request, init_data: str | None = 'desktop'):
+    _require_admin(init_data, request=request)
+    shifts_data = load_shifts_data()
+    cur = shifts_data.get('current_shift')
+    cur_metrics = compute_shift_metrics(cur.get('started_at')) if cur else None
+    return {
+        'ok': True,
+        'current_shift': cur,
+        'current_metrics': cur_metrics,
+        'active_payment_details': get_active_payment_details(),
+        'workers': shifts_data.get('workers', []),
+        'recent_x_reports': shifts_data.get('x_reports', [])[-20:],
+        'recent_history': shifts_data.get('shift_history', [])[-20:],
+    }
+
+
+@app.post('/api/admin/shifts/start')
+def admin_shifts_start(request: Request, payload: AdminShiftStartIn):
+    _require_admin(payload.init_data, request=request)
+    try:
+        shift = start_shift(payload.worker_id, actor_name=payload.actor_name or 'Admin')
+        return {'ok': True, 'shift': shift}
+    except Exception as e:
+        _error(400, str(e))
+
+
+@app.post('/api/admin/shifts/take')
+def admin_shifts_take(request: Request, payload: AdminShiftStartIn):
+    _require_admin(payload.init_data, request=request)
+    try:
+        shift = start_shift(payload.worker_id, actor_name=payload.actor_name or 'Admin')
+        return {'ok': True, 'shift': shift}
+    except Exception as e:
+        _error(400, str(e))
+
+
+@app.post('/api/admin/shifts/transfer')
+def admin_shifts_transfer(request: Request, payload: AdminShiftTransferIn):
+    _require_admin(payload.init_data, request=request)
+    try:
+        shift = transfer_shift(payload.worker_id, actor_name=payload.actor_name or 'Admin')
+        return {'ok': True, 'shift': shift}
+    except Exception as e:
+        _error(400, str(e))
+
+
+@app.post('/api/admin/shifts/end')
+def admin_shifts_end(request: Request, payload: AdminShiftActionIn):
+    _require_admin(payload.init_data, request=request)
+    try:
+        res = end_shift(actor_name=payload.actor_name or 'Admin')
+        return {'ok': True, **res}
+    except Exception as e:
+        _error(400, str(e))
+
+
+@app.post('/api/admin/shifts/x-report')
+def admin_shifts_x_report(request: Request, payload: AdminShiftActionIn):
+    _require_admin(payload.init_data, request=request)
+    try:
+        report = generate_x_report(actor_name=payload.actor_name or 'Admin', is_closing=False)
+        return {'ok': True, 'report': report}
+    except Exception as e:
+        _error(400, str(e))
+
+
+@app.get('/api/admin/shifts/history')
+def admin_shifts_history(request: Request, init_data: str | None = 'desktop'):
+    _require_admin(init_data, request=request)
+    shifts_data = load_shifts_data()
+    return {
+        'ok': True,
+        'x_reports': shifts_data.get('x_reports', []),
+        'shift_history': shifts_data.get('shift_history', []),
+    }
+
+
+@app.post('/api/admin/shifts/workers/add')
+def admin_shifts_add_worker(request: Request, payload: AdminWorkerIn):
+    _require_admin(payload.init_data, request=request)
+    w = add_worker(
+        name=payload.name,
+        mono_card=payload.mono_card,
+        ton_address=payload.ton_address,
+        telegram_id=payload.telegram_id,
+        username=payload.username,
+        notes=payload.notes,
+        is_active=payload.is_active,
+    )
+    return {'ok': True, 'worker': w, 'workers': get_workers()}
+
+
+@app.post('/api/admin/shifts/workers/update')
+def admin_shifts_update_worker(request: Request, payload: AdminWorkerIn):
+    _require_admin(payload.init_data, request=request)
+    if not payload.id:
+        _error(400, 'Не указан ID сменщика')
+    w = update_worker(
+        payload.id,
+        name=payload.name,
+        mono_card=payload.mono_card,
+        ton_address=payload.ton_address,
+        telegram_id=payload.telegram_id,
+        username=payload.username,
+        notes=payload.notes,
+        is_active=payload.is_active,
+    )
+    if not w:
+        _error(404, 'Сменщик не найден')
+    return {'ok': True, 'worker': w, 'workers': get_workers()}
+
+
+@app.post('/api/admin/shifts/workers/delete')
+def admin_shifts_delete_worker(request: Request, payload: AdminWorkerDeleteIn):
+    _require_admin(payload.init_data, request=request)
+    ok = delete_worker(payload.worker_id)
+    if not ok:
+        _error(404, 'Сменщик не найден')
+    return {'ok': True, 'workers': get_workers()}
 
 
 @app.post('/api/games/roulette/play')
@@ -4562,9 +4835,7 @@ def preview_stars_order(payload: StarsOrderIn):
 @app.post('/api/orders/stars/create')
 def create_stars_order(request: Request, payload: StarsOrderIn):
     token = _extract_init_data(request, payload.init_data)
-    tg_user, user_data = _require_user(token, allow_demo=False)
-    if tg_user.id == 0:
-        _error(403, 'Создание заказов недоступно в демо-режиме')
+    tg_user, user_data = _require_user(token, allow_demo=True)
     _check_rate_limit(request, 'orders_stars_create', max_requests=10, window_seconds=60, actor_id=tg_user.id)
     price = _calculate_stars_order_price(int(payload.stars))
 
@@ -4623,7 +4894,6 @@ def create_stars_order(request: Request, payload: StarsOrderIn):
             }
 
         # Self purchase with TON balance
-        user_data['total_stars'] = int(user_data.get('total_stars', 0) or 0) + payload.stars
         add_star_balance(user_data, payload.stars)
         message = f'Начислено {payload.stars} ⭐️. Списано {format_stars(ton_amount)} TON.'
         _create_transaction({
@@ -4640,6 +4910,7 @@ def create_stars_order(request: Request, payload: StarsOrderIn):
             'delivered_to_balance': True,
             'payment_method': 'ton_balance',
         })
+        db.save_data()
         reward_referrer_for_purchase(tg_user.id, 'stars', stars=payload.stars)
         db.save_data()
         return {
@@ -4668,7 +4939,7 @@ def preview_premium_order(payload: PremiumOrderIn):
 
 @app.post('/api/orders/premium/create')
 def create_premium_order(payload: PremiumOrderIn):
-    tg_user, user_data = _require_user(payload.init_data, allow_demo=False)
+    tg_user, user_data = _require_user(payload.init_data, allow_demo=True)
     prices = get_premium_prices()
     if payload.months not in prices:
         _error(400, 'Недоступный срок Premium')
@@ -4690,6 +4961,7 @@ def create_premium_order(payload: PremiumOrderIn):
             'status': 'confirmed',
             'referral_rewarded': True,
         })
+        db.save_data()
         reward_referrer_for_purchase(tg_user.id, 'premium', months=payload.months)
         db.save_data()
         message = (
@@ -4735,7 +5007,7 @@ def preview_ton_topup(payload: TonTopupIn):
 
 @app.post('/api/orders/ton/create')
 def create_ton_topup(payload: TonTopupIn):
-    _require_user(payload.init_data, allow_demo=False)
+    _require_user(payload.init_data, allow_demo=True)
     return {'ok': True, **_build_ton_topup_preview(payload.ton_amount, payload.payment_method)}
 
 
@@ -4876,10 +5148,8 @@ async def upload_payment_proof(
     proof: UploadFile = File(...),
 ):
     token = _extract_init_data(request, init_data)
-    tg_user, _ = _require_user(token, allow_demo=False)
-    if tg_user.id == 0:
-        _error(403, 'Загрузка чеков доступна только авторизованным пользователям')
-    _check_rate_limit(request, 'proof_upload', max_requests=5, window_seconds=300, actor_id=tg_user.id)
+    tg_user, _ = _require_user(token, allow_demo=True)
+    _check_rate_limit(request, 'proof_upload', max_requests=10, window_seconds=300, actor_id=tg_user.id)
 
     # Validate file
     if not proof.filename:
