@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from config import ADMIN_IDS, MONO, WEBAPP_URL, get_current_webapp_url
+from config import ADMIN_IDS, MONO, TON, WEBAPP_URL, get_current_webapp_url
 from database import db
 from handlers.admin import admin_panel, show_profile
 from handlers.calculator import show_calculator_menu
@@ -153,7 +153,13 @@ async def help_command(message: Message):
 
 @router.message(Command("mono"))
 async def mono_info(message: Message):
-    await message.answer(f"💳 Реквизиты Mono:\n{MONO}")
+    from utils.cards import get_active_card
+    await message.answer(f"💳 <b>Карта Mono:</b>\n<code>{get_active_card()}</code>", parse_mode="HTML")
+
+
+@router.message(Command("ton"))
+async def ton_info(message: Message):
+    await message.answer(f"💠 <b>Адрес TON кошелька:</b>\n<code>{TON}</code>", parse_mode="HTML")
 
 
 

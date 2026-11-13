@@ -31,21 +31,7 @@ from utils.pricing import (
     update_premium_prices,
     update_star_rates,
 )
-from utils.shifts import (
-    add_worker,
-    compute_shift_metrics,
-    end_shift,
-    format_shift_status_text,
-    format_x_report_text,
-    generate_x_report,
-    get_active_payment_details,
-    get_current_shift,
-    get_worker_by_id,
-    get_worker_by_tg,
-    get_workers,
-    start_shift,
-    transfer_shift,
-)
+from utils.cards import get_active_card, load_cards_data, set_active_card, update_card_number
 
 router = Router()
 
@@ -74,6 +60,12 @@ class PricingAdminStates(StatesGroup):
 
 class CaseChancesAdminStates(StatesGroup):
     waiting_chances_input = State()
+
+
+class CardAdminStates(StatesGroup):
+    editing_card_1 = State()
+    editing_card_2 = State()
+
 
 
 def _normalize_promocode(value: str) -> str:
@@ -134,13 +126,13 @@ def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="⏱ Смены и X-отчёт", callback_data="admin_shifts")],
             [InlineKeyboardButton(text="📣 Рассылка", callback_data="admin_broadcast")],
             [InlineKeyboardButton(text="💡 Предложения", callback_data="admin_suggestions")],
             [InlineKeyboardButton(text="🎁 Промокоды", callback_data="admin_promocode")],
             [InlineKeyboardButton(text="🔎 Отследить", callback_data="admin_track_user")],
             [InlineKeyboardButton(text="💸 Цены", callback_data="admin_prices")],
             [InlineKeyboardButton(text="🎲 Шансы кейсов", callback_data="admin_cases")],
+            [InlineKeyboardButton(text="💳 Карты Mono", callback_data="admin_cards")],
             [InlineKeyboardButton(text="🚫 Кто отписался", callback_data="admin_unsubs")],
             [InlineKeyboardButton(text="❌ Отклонить все заявки", callback_data="admin_reject_all_pending_prompt")],
         ]
@@ -1382,304 +1374,71 @@ async def cmd_reject_all_pending(message: Message):
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
-# ==============================
-# СИСТЕМА СМЕН И X-ОТЧЕТОВ В БОТЕ
-# ==============================
-
-def _get_shift_menu_keyboard(has_active_shift: bool) -> InlineKeyboardMarkup:
-    rows = []
-    if not has_active_shift:
-        rows.append([InlineKeyboardButton(text="▶️ Начать / Выбрать сменщика", callback_data="admin_shift_select_worker")])
-        rows.append([InlineKeyboardButton(text="🙋 Взять смену на себя", callback_data="admin_shift_take_self")])
-    else:
-        rows.append([
-            InlineKeyboardButton(text="🙋 Взять на себя", callback_data="admin_shift_take_self"),
-            InlineKeyboardButton(text="🔄 Передать смену", callback_data="admin_shift_transfer_menu"),
-        ])
-        rows.append([
-            InlineKeyboardButton(text="📑 Снять X-отчёт", callback_data="admin_shift_x_report"),
-            InlineKeyboardButton(text="🛑 Закрыть смену", callback_data="admin_shift_close_confirm"),
-        ])
-    rows.append([InlineKeyboardButton(text="👥 Список сменщиков", callback_data="admin_shift_workers_list")])
-    rows.append([InlineKeyboardButton(text="⬅️ Назад в админку", callback_data="admin_panel_back")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-@router.callback_query(F.data == "admin_shifts")
-async def show_admin_shifts(callback: CallbackQuery):
+@router.callback_query(F.data == "admin_cards")
+async def show_admin_cards(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
+        await callback.answer("Нет прав", show_alert=True)
         return
-
-    cur = get_current_shift()
-    text = format_shift_status_text(cur)
-    keyboard = _get_shift_menu_keyboard(has_active_shift=bool(cur))
-    await safe_edit_message(callback, text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "admin_shift_take_self")
-async def admin_shift_take_self(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    admin_tg_id = callback.from_user.id
-    admin_username = callback.from_user.username or f"admin_{admin_tg_id}"
-    admin_name = callback.from_user.full_name or admin_username
-
-    worker = get_worker_by_tg(admin_tg_id, admin_username)
-    if not worker:
-        # Create worker entry for this admin if not existing
-        from config import MONO, TON
-        worker = add_worker(
-            name=admin_name,
-            mono_card=MONO,
-            ton_address=TON,
-            telegram_id=admin_tg_id,
-            username=admin_username,
-            notes="Создан автоматически через Telegram бот",
-            is_active=True,
-        )
-
-    cur = get_current_shift()
-    if cur and str(cur.get("worker_id")) == str(worker["id"]):
-        await callback.answer("Вы уже находитесь на смене!", show_alert=True)
-        return
-
-    new_shift = start_shift(
-        worker_id=worker["id"],
-        actor_name=admin_name,
-        actor_tg_id=admin_tg_id,
-    )
-    await callback.answer(f"Смена успешно принята на: {worker['name']}!", show_alert=True)
-    text = format_shift_status_text(new_shift)
-    keyboard = _get_shift_menu_keyboard(has_active_shift=True)
-    await safe_edit_message(callback, text, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.callback_query(F.data == "admin_shift_select_worker")
-async def admin_shift_select_worker(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    workers = [w for w in get_workers() if w.get("is_active", True)]
-    if not workers:
-        await callback.answer("Нет доступных сменщиков. Настройте их в десктоп админке.", show_alert=True)
-        return
-
-    buttons = []
-    for w in workers:
-        card_preview = w.get("mono_card", "")
-        if len(card_preview) > 9:
-            card_preview = f"*{card_preview[-4:]}"
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"👤 {w['name']} ({card_preview})",
-                callback_data=f"admin_shift_start_worker_{w['id']}",
-            )
-        ])
-    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_shifts")])
-
-    await safe_edit_message(
-        callback,
-        "⏱ <b>Выберите сменщика для открытия смены:</b>\n"
-        "<i>Платежные реквизиты будут автоматически переключены на выбранного сменщика.</i>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML",
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("admin_shift_start_worker_"))
-async def admin_shift_do_start_worker(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    worker_id = callback.data.replace("admin_shift_start_worker_", "")
-    worker = get_worker_by_id(worker_id)
-    if not worker:
-        await callback.answer("Сменщик не найден!", show_alert=True)
-        return
-
-    admin_name = callback.from_user.full_name or callback.from_user.username or "Admin"
-    new_shift = start_shift(worker_id, actor_name=admin_name, actor_tg_id=callback.from_user.id)
-    await callback.answer(f"Смена начата: {worker['name']}!", show_alert=True)
-    text = format_shift_status_text(new_shift)
-    keyboard = _get_shift_menu_keyboard(has_active_shift=True)
-    await safe_edit_message(callback, text, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.callback_query(F.data == "admin_shift_transfer_menu")
-async def admin_shift_transfer_menu(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    cur = get_current_shift()
-    if not cur:
-        await callback.answer("Нет активной смены для передачи!", show_alert=True)
-        return
-
-    cur_worker_id = str(cur.get("worker_id"))
-    other_workers = [w for w in get_workers() if str(w.get("id")) != cur_worker_id and w.get("is_active", True)]
-    if not other_workers:
-        await callback.answer("Нет других активных сменщиков для передачи смены.", show_alert=True)
-        return
-
-    buttons = []
-    for w in other_workers:
-        card_preview = w.get("mono_card", "")
-        if len(card_preview) > 9:
-            card_preview = f"*{card_preview[-4:]}"
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"🔄 Передать: {w['name']} ({card_preview})",
-                callback_data=f"admin_shift_do_transfer_{w['id']}",
-            )
-        ])
-    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_shifts")])
-
-    await safe_edit_message(
-        callback,
-        f"⏱ <b>Передача активной смены</b>\n\n"
-        f"Текущий сменщик: <b>{cur.get('worker_name', '—')}</b>\n\n"
-        f"<i>Выберите, кому передать смену. Реквизиты бота и MiniApp сразу переключатся на нового сменщика.</i>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML",
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("admin_shift_do_transfer_"))
-async def admin_shift_do_transfer(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    worker_id = callback.data.replace("admin_shift_do_transfer_", "")
-    worker = get_worker_by_id(worker_id)
-    if not worker:
-        await callback.answer("Сменщик не найден!", show_alert=True)
-        return
-
-    admin_name = callback.from_user.full_name or callback.from_user.username or "Admin"
-    updated_shift = transfer_shift(worker_id, actor_name=admin_name, actor_tg_id=callback.from_user.id)
-    await callback.answer(f"Смена успешно передана: {worker['name']}!", show_alert=True)
-    text = format_shift_status_text(updated_shift)
-    keyboard = _get_shift_menu_keyboard(has_active_shift=True)
-    await safe_edit_message(callback, text, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.callback_query(F.data == "admin_shift_x_report")
-async def admin_shift_take_x_report(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    admin_name = callback.from_user.full_name or callback.from_user.username or "Admin"
-    report = generate_x_report(actor_name=admin_name, is_closing=False)
-    report_text = format_x_report_text(report)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Обновить отчет", callback_data="admin_shift_x_report")],
-            [InlineKeyboardButton(text="⬅️ К сменам", callback_data="admin_shifts")],
-        ]
-    )
-    await safe_edit_message(callback, report_text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer("X-отчет успешно сформирован и сохранен в лог!", show_alert=True)
-
-
-@router.callback_query(F.data == "admin_shift_close_confirm")
-async def admin_shift_close_confirm(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
-        return
-
-    cur = get_current_shift()
-    if not cur:
-        await callback.answer("Нет открытой смены!", show_alert=True)
-        return
-
+    data = load_cards_data()
+    active = data.get('active_card', 1)
+    c1 = data.get('card_1', '') or '(не задана)'
+    c2 = data.get('card_2', '') or '(не задана)'
     text = (
-        f"🛑 <b>Закрытие текущей смены (Z-ОТЧЕТ)</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Сменщик: <b>{cur.get('worker_name', '—')}</b>\n"
-        f"Начало смены: <b>{cur.get('started_at', '—')}</b>\n\n"
-        f"⚠️ При закрытии смены:\n"
-        f"1. Будет снят и зафиксирован финальный <b>Z-отчет</b>\n"
-        f"2. Смена будет закрыта и сохранена в историю\n"
-        f"3. Реквизиты переключатся на стандартные\n\n"
-        f"<b>Подтверждаете закрытие смены?</b>"
+        f"💳 <b>Управление картами Mono</b>\n\n"
+        f"{'✅' if active == 1 else '⬜'} <b>Карта 1:</b> <code>{c1}</code>\n"
+        f"{'✅' if active == 2 else '⬜'} <b>Карта 2:</b> <code>{c2}</code>\n\n"
+        f"<i>Активная карта показывается клиентам при оплате.</i>"
     )
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🛑 Да, закрыть смену", callback_data="admin_shift_do_close"),
-                InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_shifts"),
-            ]
-        ]
-    )
-    await safe_edit_message(callback, text, reply_markup=keyboard, parse_mode="HTML")
+    rows = [
+        [InlineKeyboardButton(text="🟢 Активировать карту 1", callback_data="admin_card_switch_1")],
+        [InlineKeyboardButton(text="🟢 Активировать карту 2", callback_data="admin_card_switch_2")],
+        [InlineKeyboardButton(text="✏️ Изменить карту 1", callback_data="admin_card_edit_1")],
+        [InlineKeyboardButton(text="✏️ Изменить карту 2", callback_data="admin_card_edit_2")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_panel_back")],
+    ]
+    await safe_edit_message(callback, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="HTML")
     await callback.answer()
 
 
-@router.callback_query(F.data == "admin_shift_do_close")
-async def admin_shift_do_close(callback: CallbackQuery):
+@router.callback_query(F.data.in_({"admin_card_switch_1", "admin_card_switch_2"}))
+async def admin_card_switch(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
+        await callback.answer("Нет прав", show_alert=True)
         return
-
-    cur = get_current_shift()
-    if not cur:
-        await callback.answer("Нет открытой смены!", show_alert=True)
-        return
-
-    admin_name = callback.from_user.full_name or callback.from_user.username or "Admin"
-    res = end_shift(actor_name=admin_name)
-    z_report = res.get("z_report", {})
-    report_text = format_x_report_text(z_report)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⏱ К сменам", callback_data="admin_shifts")],
-            [InlineKeyboardButton(text="⚙️ В админку", callback_data="admin_panel_back")],
-        ]
-    )
-    await safe_edit_message(callback, f"✅ <b>Смена успешно закрыта!</b>\n\n" + report_text, reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer("Смена закрыта, Z-отчет залогирован!", show_alert=True)
+    idx = 1 if callback.data == "admin_card_switch_1" else 2
+    set_active_card(idx)
+    await callback.answer(f"✅ Карта {idx} активирована!", show_alert=True)
+    await show_admin_cards(callback, state)
 
 
-@router.callback_query(F.data == "admin_shift_workers_list")
-async def admin_shift_workers_list(callback: CallbackQuery):
+@router.callback_query(F.data.in_({"admin_card_edit_1", "admin_card_edit_2"}))
+async def admin_card_edit_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Нет доступа", show_alert=True)
+        await callback.answer("Нет прав", show_alert=True)
         return
-
-    workers = get_workers()
-    cur = get_current_shift()
-    cur_id = str(cur.get("worker_id")) if cur else None
-
-    lines = ["👥 <b>Список сменщиков:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n"]
-    if not workers:
-        lines.append("<i>Список сменщиков пуст. Добавьте их в десктоп админке.</i>")
-    else:
-        for idx, w in enumerate(workers, 1):
-            is_active_shift = "🟢 НА СМЕНЕ" if str(w.get("id")) == cur_id else ("⚪️ активен" if w.get("is_active", True) else "🔴 отключен")
-            tg_info = f"@{w.get('username')}" if w.get("username") else (f"ID {w.get('telegram_id')}" if w.get("telegram_id") else "нет TG")
-            lines.append(
-                f"{idx}. <b>{w.get('name')}</b> [{is_active_shift}]\n"
-                f"   📱 {tg_info}\n"
-                f"   💳 Mono: <code>{w.get('mono_card', '—')}</code>\n"
-                f"   💠 TON: <code>{w.get('ton_address', '—')}</code>\n"
-            )
-
-    lines.append("\nℹ️ <i>Добавление, редактирование реквизитов и удаление сменщиков настраиваются в десктоп админке.</i>")
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ К сменам", callback_data="admin_shifts")],
-        ]
+    idx = 1 if callback.data == "admin_card_edit_1" else 2
+    await state.update_data(editing_card_index=idx)
+    await state.set_state(CardAdminStates.editing_card_1 if idx == 1 else CardAdminStates.editing_card_2)
+    await safe_edit_message(
+        callback,
+        f"✏️ <b>Введите новый номер карты {idx}:</b>\n<i>Например: 4874 0700 1234 5678</i>",
+        parse_mode="HTML",
     )
-    await safe_edit_message(callback, "\n".join(lines), reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
+
+
+@router.message(CardAdminStates.editing_card_1)
+@router.message(CardAdminStates.editing_card_2)
+async def admin_card_edit_save(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    data = await state.get_data()
+    idx = data.get('editing_card_index', 1)
+    number = (message.text or '').strip()
+    update_card_number(idx, number)
+    await state.clear()
+    await message.answer(
+        f"✅ <b>Карта {idx} обновлена!</b>\n<code>{number}</code>",
+        parse_mode="HTML",
+        reply_markup=get_admin_panel_keyboard(),
+    )

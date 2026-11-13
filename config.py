@@ -64,7 +64,7 @@ MODE_DEFAULTS = {
     'prod': PROD,
 }
 #Режим роботы
-APP_MODE = 'prod'
+APP_MODE = 'test'
 
 # Mini App / backend
 BACKEND_HOST = os.getenv('BACKEND_HOST', '0.0.0.0')
@@ -351,6 +351,7 @@ RUNTIME_SETTINGS_PATH = BASE_DIR / 'data' / 'bot_runtime_settings.json'
 RUNTIME_SETTING_KEYS = {
     'admin_ids', 'admin_chat_id', 'bot_username', 'reviews_channel', 'support_username',
     'required_channels', 'premium_seller_username', 'mono_card', 'ton_address',
+    'card_1', 'card_2', 'active_card',
 }
 RUNTIME_MODULE_TARGETS = {
     'handlers.payments': {
@@ -370,6 +371,9 @@ RUNTIME_MODULE_TARGETS = {
 
 
 def get_managed_settings() -> dict:
+    from utils.cards import load_cards_data, get_active_card
+    cards = load_cards_data()
+    active_card_num = get_active_card(cards)
     return {
         'mode': APP_MODE,
         'admin_ids': list(ADMIN_IDS),
@@ -379,8 +383,11 @@ def get_managed_settings() -> dict:
         'support_username': str(SUPPORT_USERNAME),
         'required_channels': list(REQUIRED_CHANNELS),
         'premium_seller_username': str(PREMIUM_SELLER_USERNAME),
-        'mono_card': str(MONO),
+        'mono_card': active_card_num,
         'ton_address': str(TON),
+        'card_1': str(cards.get('card_1', '')),
+        'card_2': str(cards.get('card_2', '')),
+        'active_card': int(cards.get('active_card', 1)),
         'token_change_requires_restart': True,
     }
 
@@ -390,6 +397,13 @@ def normalize_managed_settings(values: dict) -> dict:
         raise ValueError('Переданы неподдерживаемые настройки')
 
     normalized = {}
+    if 'active_card' in values:
+        try:
+            val = int(values['active_card'])
+            normalized['active_card'] = 2 if val == 2 else 1
+        except Exception:
+            normalized['active_card'] = 1
+
     if 'admin_ids' in values:
         if not isinstance(values['admin_ids'], list):
             raise ValueError('Список администраторов задан неверно')
@@ -418,7 +432,7 @@ def normalize_managed_settings(values: dict) -> dict:
             channel if channel.startswith('@') else f'@{channel}' for channel in channels
         ))
 
-    string_fields = RUNTIME_SETTING_KEYS - {'admin_ids', 'admin_chat_id', 'required_channels'}
+    string_fields = RUNTIME_SETTING_KEYS - {'admin_ids', 'admin_chat_id', 'required_channels', 'active_card'}
     for field in string_fields & values.keys():
         value = str(values[field]).strip()
         if len(value) > 500:
@@ -431,6 +445,14 @@ def normalize_managed_settings(values: dict) -> dict:
 
 def apply_managed_settings(values: dict) -> dict:
     normalized = normalize_managed_settings(values)
+    if any(k in normalized for k in ('card_1', 'card_2', 'active_card')):
+        from utils.cards import update_all_cards
+        c1 = normalized.get('card_1')
+        c2 = normalized.get('card_2')
+        ac = normalized.get('active_card')
+        cards = update_all_cards(card_1=c1, card_2=c2, active_card=ac)
+        globals()['MONO'] = cards['active_card_number']
+
     for key, value in normalized.items():
         if key == 'admin_ids':
             ADMIN_IDS[:] = value

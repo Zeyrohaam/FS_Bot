@@ -6,11 +6,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from config import ADMIN_CHAT_ID, ADMIN_IDS, MONO, TON, PREMIUM_SELLER_USERNAME
+from utils.cards import get_active_card
 from database import db
 from handlers.calculator import get_price, get_price_per_star, show_calculator_menu
 from keyboards.reply import main_menu, menu_with_back, purchases_menu, support_category_menu, back_only_keyboard
 import html as html_lib
-from utils.shifts import get_active_payment_details
 from utils.helpers import (
     add_star_balance,
     add_ton_balance,
@@ -519,7 +519,6 @@ async def payment_mono(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(selected_package=package)
     await state.set_state(PaymentStates.waiting_payment_proof)
-    active_pay = get_active_payment_details()
     target_line = "🙋 Покупка <b>себе</b>" if not package.get("target_username") else f"🎁 Получатель: <b>{package['target_username']}</b>"
     await safe_edit_message(
         callback,
@@ -528,7 +527,7 @@ async def payment_mono(callback: CallbackQuery, state: FSMContext):
         f"⭐ Звёзд: <b>{package['stars']}</b>\n"
         f"💰 К оплате: <b>{float(package['price']):.2f} грн</b>\n"
         f"{target_line}\n\n"
-        f"🏦 Реквизиты: <code>{active_pay['mono_card']}</code>\n\n"
+        f"🏦 Реквизиты: <code>{get_active_card()}</code>\n\n"
         f"📸 <i>После оплаты отправьте скриншот чека сюда</i>",
         parse_mode="HTML",
     )
@@ -638,7 +637,6 @@ async def payment_ton_wallet(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Не удалось получить курс TON", show_alert=True)
         return
     await state.set_state(PaymentStates.waiting_payment_proof)
-    active_pay = get_active_payment_details()
     safe_target = html_lib.escape(package.get("target_username") or "", quote=False)
     target_line = "🙋 Покупка <b>себе</b>" if not safe_target else f"🎁 Получатель: <b>{safe_target}</b>"
     await safe_edit_message(
@@ -649,7 +647,7 @@ async def payment_ton_wallet(callback: CallbackQuery, state: FSMContext):
         f"💰 Стоимость: <b>{float(package['price']):.2f} грн</b>\n"
         f"💠 К оплате: <b>{format_stars(ton_amount)} TON</b>\n"
         f"{target_line}\n\n"
-        f"📬 Адрес TON: <code>{active_pay['ton_address']}</code>\n\n"
+        f"📬 Адрес TON: <code>{TON}</code>\n\n"
         f"📸 <i>После оплаты отправьте скриншот транзакции сюда</i>",
         parse_mode="HTML",
     )
@@ -669,8 +667,7 @@ async def premium_pay_ton_wallet(callback: CallbackQuery, state: FSMContext):
         return
     premium["payment_method"] = "ton_wallet"
     await state.update_data(premium_order=premium)
-    active_pay = get_active_payment_details()
-    text = f"💠 Оплата на TON кошелёк\n\n👑 Telegram Premium на {premium['months']} мес. = {float(premium['price']):.2f} грн\n💠 К оплате: {format_stars(ton_amount)} TON\n💠 TON адрес: {active_pay['ton_address']}"
+    text = f"💠 Оплата на TON кошелёк\n\n👑 Telegram Premium на {premium['months']} мес. = {float(premium['price']):.2f} грн\n💠 К оплате: {format_stars(ton_amount)} TON\n💠 TON адрес: {TON}"
     if int(premium["months"]) == 1:
         await state.set_state(PaymentStates.waiting_payment_proof)
         await safe_edit_message(callback, text + "\n\n📩 Пришлите скриншот об оплате.")
@@ -693,12 +690,11 @@ async def ton_topup_ton_wallet(callback: CallbackQuery, state: FSMContext):
     order["total_uah"] = round(float(order.get("base_total_uah", order.get("total_uah", 0) or 0)), 2)
     await state.update_data(ton_topup_order=order)
     await state.set_state(PaymentStates.waiting_payment_proof)
-    active_pay = get_active_payment_details()
     await safe_edit_message(
         callback,
         f"💠 Покупка TON\n\nБудет зачислено: {format_stars(order['ton_amount'])} TON\n"
         f"💠 К оплате: {format_stars(ton_to_pay)} TON\n"
-        f"💠 TON адрес: {active_pay['ton_address']}\n\n"
+        f"💠 TON адрес: {TON}\n\n"
         f"📩 Пришлите скриншот об оплате.",
     )
     await callback.answer()
@@ -713,13 +709,12 @@ async def premium_pay_mono(callback: CallbackQuery, state: FSMContext):
         return
     premium["payment_method"] = "mono"
     await state.update_data(premium_order=premium)
-    active_pay = get_active_payment_details()
     if int(premium["months"]) == 1:
         await state.set_state(PaymentStates.waiting_payment_proof)
-        await safe_edit_message(callback, f"💳 Оплата картой\n\n👑 Telegram Premium на 1 мес. = {float(premium['price']):.2f} грн\n💳 Реквизиты: {active_pay['mono_card']}\n\n📩 Пришлите скриншот об оплате.")
+        await safe_edit_message(callback, f"💳 <b>Оплата картой Mono</b>\n\n👑 Telegram Premium на 1 мес. = <b>{float(premium['price']):.2f} грн</b>\n💳 Реквизиты: <code>{get_active_card()}</code>\n\n📩 Пришлите скриншот об оплате.", parse_mode="HTML")
     else:
         await state.set_state(PaymentStates.waiting_premium_username)
-        await safe_edit_message(callback, f"💳 Оплата картой\n\n👑 Telegram Premium на {premium['months']} мес. = {float(premium['price']):.2f} грн\n💳 Реквизиты: {active_pay['mono_card']}\n\n✍️ Отправьте @username человека, которому нужно купить Premium.")
+        await safe_edit_message(callback, f"💳 <b>Оплата картой Mono</b>\n\n👑 Telegram Premium на {premium['months']} мес. = <b>{float(premium['price']):.2f} грн</b>\n💳 Реквизиты: <code>{get_active_card()}</code>\n\n✍️ Отправьте @username человека, которому нужно купить Premium.", parse_mode="HTML")
     await callback.answer()
 
 
@@ -823,14 +818,14 @@ async def ton_topup_mono(callback: CallbackQuery, state: FSMContext):
     order["total_uah"] = round(final_total_uah, 2)
     await state.update_data(ton_topup_order=order)
     await state.set_state(PaymentStates.waiting_payment_proof)
-    active_pay = get_active_payment_details()
     await safe_edit_message(
         callback,
-        f"💠 Покупка TON\n\n"
-        f"Будет зачислено: {format_stars(order['ton_amount'])} TON\n"
-        f"💳 К оплате: {float(order['total_uah']):.2f} грн\n"
-        f"💳 Реквизиты: {active_pay['mono_card']}\n\n"
-        f"📩 Пришлите скриншот об оплате.",
+        f"💠 <b>Покупка TON</b>\n\n"
+        f"Будет зачислено: <b>{format_stars(order['ton_amount'])} TON</b>\n"
+        f"💳 К оплате: <b>{float(order['total_uah']):.2f} грн</b>\n"
+        f"💳 Реквизиты Mono: <code>{get_active_card()}</code>\n\n"
+        f"📩 <i>Пришлите скриншот об оплате.</i>",
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -1035,10 +1030,6 @@ async def handle_payment_proof(message: Message, state: FSMContext):
             "delivered_to_balance": False,
             "source": "bot",
         }
-        active_pay = get_active_payment_details()
-        if active_pay.get("shift_active"):
-            transaction["shift_id"] = active_pay.get("shift_id")
-            transaction["shift_worker"] = active_pay.get("worker_name")
         transaction = db.add_transaction(transaction)
         safe_target = html_lib.escape(target_username or ("@" + (message.from_user.username or "unknown")), quote=False)
         caption = (
@@ -1079,10 +1070,6 @@ async def handle_payment_proof(message: Message, state: FSMContext):
             "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
             "source": "bot",
         }
-        active_pay = get_active_payment_details()
-        if active_pay.get("shift_active"):
-            transaction["shift_id"] = active_pay.get("shift_id")
-            transaction["shift_worker"] = active_pay.get("worker_name")
         transaction = db.add_transaction(transaction)
         if payment_method == "ton_wallet":
             caption = (
@@ -1125,10 +1112,6 @@ async def handle_payment_proof(message: Message, state: FSMContext):
             "date": datetime.now().strftime("%d.%m.%Y %H:%M"),
             "source": "bot",
         }
-        active_pay = get_active_payment_details()
-        if active_pay.get("shift_active"):
-            transaction["shift_id"] = active_pay.get("shift_id")
-            transaction["shift_worker"] = active_pay.get("worker_name")
         transaction = db.add_transaction(transaction)
         who_for = html_lib.escape(target_username or "Себе", quote=False)
         caption = (
